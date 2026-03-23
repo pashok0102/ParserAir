@@ -104,6 +104,9 @@ const TEXT = {
     authFailed: 'Ошибка авторизации',
     favoriteFailed: 'Ошибка избранного',
     searchFailed: 'Ошибка поиска',
+    footerBrand: 'AirParser',
+    footerText: 'Поиск билетов, история запросов и избранное в одном интерфейсе.',
+    footerCopy: 'Все права защищены.',
   },
   en: {
     sourceBoth: 'All sources',
@@ -207,6 +210,9 @@ const TEXT = {
     authFailed: 'Authorization failed',
     favoriteFailed: 'Favorite update failed',
     searchFailed: 'Search error',
+    footerBrand: 'AirParser',
+    footerText: 'Ticket search, query history, and favorites in one interface.',
+    footerCopy: 'All rights reserved.',
   },
 }
 
@@ -1695,6 +1701,16 @@ function App() {
           </div>
         </section>
       </main>
+
+      <footer className="site-footer">
+        <div className="site-footer-inner">
+          <div className="site-footer-copy">
+            <strong>{t.footerBrand}</strong>
+            <p>{t.footerText}</p>
+          </div>
+          <span className="site-footer-meta">© 2026 {t.footerCopy}</span>
+        </div>
+      </footer>
     </div>
   )
 }
