@@ -11,6 +11,7 @@ const TEXT = {
     noDate: 'Дата не указана',
     priceOnSite: 'Цена на сайте',
     airline: 'Авиакомпания',
+    baggage: 'Багаж и тариф',
     departure: 'Вылет',
     estimatedNote: 'Для режима "Хоть куда" цена ориентировочная. Точную цену смотри после перехода на сайт источника.',
     exactNote: 'Цена может отличаться на 300-400 RUB из-за времени обновления выдачи, комиссии источника или изменения тарифа в момент перехода.',
@@ -127,6 +128,7 @@ const TEXT = {
     noDate: 'Date not specified',
     priceOnSite: 'Price on site',
     airline: 'Airline',
+    baggage: 'Baggage and fare',
     departure: 'Departure',
     estimatedNote: 'In "Anywhere" mode the price is approximate. Check the exact price after opening the source site.',
     exactNote: 'Price may differ by 300-400 RUB due to update timing, source commission, or fare changes at the moment of redirect.',
@@ -743,6 +745,7 @@ function TicketCard({ ticket, onToggleFavorite, favoritePending, lang }) {
       <strong className="route content-layer">{cityRoute}</strong>
       <p className="airport-route content-layer">{airportRoute}</p>
       {airlineName ? <p className="airline-name content-layer">{t.airline}: {airlineName}</p> : null}
+      {ticket.baggage_info ? <p className="airline-name content-layer">{t.baggage}: {ticket.baggage_info}</p> : null}
       <p className="meta content-layer">{formatTransfers(ticket.transfers, lang)}</p>
       <p className="meta content-layer">{t.departure}: {formatDateTime(ticket.departure_at, lang)}</p>
       <div className="price-note content-layer">
@@ -1737,6 +1740,7 @@ function App() {
               type="button"
               onClick={handleToggleMainSort}
               aria-pressed={sortCheapFirst}
+              disabled={loading}
             >
               <span className="sort-button-mark">{sortCheapFirst ? '✓' : ''}</span>
               <span>{t.sortToggle}: {t.sortCheapFirst}</span>

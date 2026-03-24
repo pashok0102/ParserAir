@@ -138,3 +138,38 @@ def extract_rendered_text_price(
         return numeric
     return None
 
+
+def extract_rendered_text_content(
+    url: str,
+    selector: str,
+    timeout_ms: int = 45000,
+) -> str | None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return None
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(locale="ru-RU", user_agent="Mozilla/5.0")
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 10000))
+            except Exception:
+                pass
+            try:
+                page.wait_for_selector(selector, timeout=min(timeout_ms, 12000))
+            except Exception:
+                pass
+            locator = page.locator(selector).first
+            if locator.count() == 0:
+                browser.close()
+                return None
+            raw_value = locator.inner_text().strip()
+            browser.close()
+    except Exception:
+        return None
+
+    return raw_value or None
+

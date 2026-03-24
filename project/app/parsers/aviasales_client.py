@@ -16,6 +16,7 @@ from app.config import Settings
 from app.parsers.rendered_price import (
     extract_rendered_attr_price,
     extract_rendered_price,
+    extract_rendered_text_content,
     extract_rendered_text_price,
 )
 
@@ -32,6 +33,7 @@ class Ticket:
     source: str = "Aviasales"
     updated_at: str = ""
     estimated_price: bool = False
+    baggage_info: str = ""
 
 
 class AviasalesClient:
@@ -44,13 +46,14 @@ class AviasalesClient:
     EXACT_RENDERED_PRICE_MAX_WORKERS = 6
     EXACT_RENDERED_PRICE_CANDIDATES = 12
     EXACT_PRICE_CACHE_TTL_SECONDS = 300
+    EXACT_PRICE_CACHE_VERSION = "v2-main-price"
 
     def __init__(self, settings: Settings):
         self.settings = settings
         self._location_cache: dict[str, str] = {}
         self._location_name_cache: dict[str, str] = {}
         self._airport_name_cache: dict[str, str] = {}
-        self._exact_price_cache: dict[str, tuple[float, int | None]] = {}
+        self._exact_price_cache: dict[str, tuple[float, int | None, str]] = {}
         self._exact_price_cache_lock = Lock()
         self.session = self._build_session()
 
@@ -494,39 +497,32 @@ class AviasalesClient:
         if not link.startswith("http"):
             link = f"https://www.aviasales.ru{link}"
 
-        cache_hit, cached_price = self._get_cached_exact_price(link)
+        cache_key = f"{self.EXACT_PRICE_CACHE_VERSION}|{link}"
+        cache_hit, cached_price, cached_baggage = self._get_cached_exact_price(cache_key)
         if cache_hit:
             if cached_price is None:
                 item["estimated_price"] = True
                 return False
             item["price"] = cached_price
             item["estimated_price"] = False
+            if cached_baggage:
+                item["baggage_info"] = cached_baggage
             return True
 
-        rendered_price = extract_rendered_attr_price(
+        rendered_price = extract_rendered_text_price(
             link,
-            selector='[data-test-id="proposal-0"]',
-            attribute='data-test-price',
+            selector='[data-test-id="price"]',
             price_min=3000,
             price_max=500000,
             timeout_ms=7000,
         )
 
         if rendered_price is None:
-            rendered_price = extract_rendered_text_price(
-                link,
-                selector='[data-test-id="proposal-0"] [data-test-id="price"]',
-                price_min=3000,
-                price_max=500000,
-                timeout_ms=7000,
-            )
-
-        if rendered_price is None:
             rendered_price = extract_rendered_price(
                 link,
                 patterns=[
-                    r'data-test-id="proposal-0"[^>]*data-test-price="(\d{3,6})"',
                     r'data-test-id="price">(\d{1,3}(?:[ \u00A0\u202F]\d{3})+|\d{4,6})\s*₽',
+                    r'data-test-id="proposal-0"[^>]*data-test-price="(\d{3,6})"',
                 ],
                 price_min=3000,
                 price_max=500000,
@@ -534,31 +530,74 @@ class AviasalesClient:
                 pick="first",
             )
 
+        if rendered_price is None:
+            rendered_price = extract_rendered_attr_price(
+                link,
+                selector='[data-test-id="proposal-0"]',
+                attribute='data-test-price',
+                price_min=3000,
+                price_max=500000,
+                timeout_ms=7000,
+            )
+
         if rendered_price is not None:
             item["price"] = rendered_price
             item["estimated_price"] = False
-            self._set_cached_exact_price(link, rendered_price)
+            baggage_info = self._extract_baggage_info(link)
+            if baggage_info:
+                item["baggage_info"] = baggage_info
+            self._set_cached_exact_price(cache_key, rendered_price, baggage_info)
             return True
 
-        self._set_cached_exact_price(link, None)
+        self._set_cached_exact_price(cache_key, None, "")
         item["estimated_price"] = True
         return False
 
-    def _get_cached_exact_price(self, link: str) -> tuple[bool, int | None]:
+    def _extract_baggage_info(self, link: str) -> str:
+        proposal_text = extract_rendered_text_content(
+            link,
+            selector='[data-test-id="proposal-0"]',
+            timeout_ms=7000,
+        )
+        if not proposal_text:
+            return ""
+
+        lines = [line.strip() for line in proposal_text.splitlines() if line.strip()]
+        baggage_lines: list[str] = []
+        for line in lines:
+            normalized = line.lower()
+            if normalized.startswith("багаж") or normalized.startswith("ручная кладь"):
+                baggage_lines.append(line)
+
+        if baggage_lines:
+            return " | ".join(dict.fromkeys(baggage_lines))
+
+        compact_matches = re.findall(
+            r"(Багаж\s+[^\n|]+|Ручная\s+кладь\s+[^\n|]+)",
+            proposal_text,
+            flags=re.IGNORECASE,
+        )
+        if compact_matches:
+            cleaned = [match.strip() for match in compact_matches if match.strip()]
+            return " | ".join(dict.fromkeys(cleaned))
+
+        return ""
+
+    def _get_cached_exact_price(self, cache_key: str) -> tuple[bool, int | None, str]:
         now = monotonic()
         with self._exact_price_cache_lock:
-            cached = self._exact_price_cache.get(link)
+            cached = self._exact_price_cache.get(cache_key)
             if not cached:
-                return False, None
-            expires_at, price = cached
+                return False, None, ""
+            expires_at, price, baggage_info = cached
             if expires_at <= now:
-                self._exact_price_cache.pop(link, None)
-                return False, None
-            return True, price
+                self._exact_price_cache.pop(cache_key, None)
+                return False, None, ""
+            return True, price, baggage_info
 
-    def _set_cached_exact_price(self, link: str, price: int | None) -> None:
+    def _set_cached_exact_price(self, cache_key: str, price: int | None, baggage_info: str = "") -> None:
         with self._exact_price_cache_lock:
-            self._exact_price_cache[link] = (monotonic() + self.EXACT_PRICE_CACHE_TTL_SECONDS, price)
+            self._exact_price_cache[cache_key] = (monotonic() + self.EXACT_PRICE_CACHE_TTL_SECONDS, price, baggage_info)
 
     @staticmethod
     def _build_aviasales_one_way_link(origin: str, destination: str, departure_at: str) -> str:
@@ -672,6 +711,7 @@ class AviasalesClient:
             source="Aviasales",
             updated_at=datetime.now(timezone.utc).isoformat(),
             estimated_price=bool(item.get("estimated_price", False)),
+            baggage_info=str(item.get("baggage_info", "") or ""),
         )
 
 

@@ -43,6 +43,7 @@ PARSER_EXECUTORS = {
     'kupibilet': ThreadPoolExecutor(max_workers=KUPIBILET_POOL_WORKERS, thread_name_prefix='kupibilet'),
 }
 SEARCH_CACHE_TTL_SECONDS = 180
+SEARCH_CACHE_VERSION = "v2-main-price"
 SEARCH_CACHE: dict[tuple, tuple[float, list[Ticket]]] = {}
 SEARCH_CACHE_LOCK = Lock()
 
@@ -94,6 +95,7 @@ def build_search_cache_key(
     anywhere: bool,
 ):
     return (
+        SEARCH_CACHE_VERSION,
         source_name,
         route.strip().lower(),
         limit,
@@ -185,6 +187,7 @@ def serialize_favorite(favorite: FavoriteTicket) -> dict:
         'updated_at': favorite.updated_at,
         'is_favorite': True,
         'estimated_price': False,
+        'baggage_info': '',
     }
 
 
@@ -509,7 +512,6 @@ def get_tickets_for_period(
         anywhere_refine_exact = True
         if anywhere:
             daily_limit = min(limit or 12, 12)
-            anywhere_refine_exact = False
         elif source_name in {'tutu', 'kupibilet', 'both'}:
             daily_limit = min(limit or 3, 3)
         return (
@@ -696,6 +698,7 @@ def tickets_to_dicts(tickets: list[Ticket], favorite_keys: set[str] | None = Non
                 'updated_at': ticket.updated_at,
                 'is_favorite': ticket_key in favorite_keys,
                 'estimated_price': bool(getattr(ticket, 'estimated_price', False)),
+                'baggage_info': str(getattr(ticket, 'baggage_info', '') or ''),
             }
         )
     return result
