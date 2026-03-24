@@ -1369,7 +1369,11 @@ function App() {
               <strong>{theme === 'dark' ? 'Light' : 'Dark'}</strong>
             </button>
             <button
-              className={accountOpen ? 'account-avatar active' : 'account-avatar'}
+              className={[
+                'account-avatar',
+                accountOpen ? 'active' : '',
+                authUser ? 'logged-in' : '',
+              ].filter(Boolean).join(' ')}
               type="button"
               onClick={() => setAccountOpen((current) => !current)}
               aria-label={lang === 'ru' ? 'Открыть аккаунт' : 'Open account'}
