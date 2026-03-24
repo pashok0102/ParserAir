@@ -104,6 +104,16 @@ const TEXT = {
     authFailed: 'Ошибка авторизации',
     favoriteFailed: 'Ошибка избранного',
     searchFailed: 'Ошибка поиска',
+    navLogo: 'AirParser',
+    navHome: 'Главная',
+    navAbout: 'О сервисе',
+    navSearch: 'Поиск',
+    navHistory: 'История',
+    navFavorites: 'Избранное',
+    navResults: 'Результаты',
+    navAccount: 'Аккаунт',
+    navLanguage: 'Язык',
+    navTheme: 'Тема',
     footerBrand: 'AirParser',
     footerText: 'Поиск билетов, история запросов и избранное в одном интерфейсе.',
     footerCopy: 'Все права защищены.',
@@ -210,6 +220,16 @@ const TEXT = {
     authFailed: 'Authorization failed',
     favoriteFailed: 'Favorite update failed',
     searchFailed: 'Search error',
+    navLogo: 'AirParser',
+    navHome: 'Home',
+    navAbout: 'About',
+    navSearch: 'Search',
+    navHistory: 'History',
+    navFavorites: 'Favorites',
+    navResults: 'Results',
+    navAccount: 'Account',
+    navLanguage: 'Language',
+    navTheme: 'Theme',
     footerBrand: 'AirParser',
     footerText: 'Ticket search, query history, and favorites in one interface.',
     footerCopy: 'All rights reserved.',
@@ -506,7 +526,13 @@ function buildRenderTicketKey(ticket, index, prefix = 'ticket') {
 function scrollToSection(id) {
   const node = document.getElementById(id)
   if (!node) return
-  node.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const topbar = document.querySelector('.topbar')
+  const topbarHeight = topbar instanceof HTMLElement ? topbar.offsetHeight : 0
+  const targetTop = node.getBoundingClientRect().top + window.scrollY - topbarHeight - 18
+  window.scrollTo({
+    top: Math.max(targetTop, 0),
+    behavior: 'smooth',
+  })
 }
 
 function formatInputDate(value) {
@@ -833,6 +859,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [serverTime, setServerTime] = useState('')
+  const [scrollProgress, setScrollProgress] = useState(0)
   const t = TEXT[lang] || TEXT.ru
   const sourceOptions = useMemo(
     () => [
@@ -852,6 +879,15 @@ function App() {
       })),
     ],
     [lang, t]
+  )
+  const navItems = useMemo(
+    () => [
+      { id: 'about-section', label: t.navAbout, icon: '◎' },
+      { id: 'parser-section', label: t.navSearch, icon: '◌' },
+      { id: 'favorites-section', label: t.navHistory, icon: '◍' },
+      { id: 'output-section', label: t.navResults, icon: '▣' },
+    ],
+    [t]
   )
 
   const canSearch = useMemo(
@@ -969,6 +1005,23 @@ function App() {
   useEffect(() => {
     localStorage.setItem('airparser-theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    function updateTopbarState() {
+      const documentHeight = document.documentElement.scrollHeight
+      const viewportHeight = window.innerHeight
+      const maxScroll = Math.max(documentHeight - viewportHeight, 1)
+      const nextProgress = Math.min(window.scrollY / maxScroll, 1)
+      setScrollProgress(nextProgress)
+    }
+
+    updateTopbarState()
+    window.addEventListener('scroll', updateTopbarState, { passive: true })
+
+    return () => {
+      window.removeEventListener('scroll', updateTopbarState)
+    }
+  }, [])
 
   useEffect(() => {
     if (!authUser) {
@@ -1268,7 +1321,30 @@ function App() {
       <div className="aurora aurora-right" />
       <div className="aurora aurora-bottom" />
 
-      <section className="hero-screen" id="top-section">
+      <header
+        className={scrollProgress > 0.02 ? 'topbar scrolled' : 'topbar'}
+        style={{
+          '--topbar-fill': `${Math.round(scrollProgress * 100)}%`,
+          '--topbar-compact': scrollProgress.toFixed(3),
+        }}
+      >
+        <button className="header__logo" type="button" onClick={() => scrollToSection('top-section')}>
+          <strong>{t.navLogo}</strong>
+        </button>
+
+        <nav className="navbar" aria-label="Main navigation">
+          <ul className="navbar__menu">
+            {navItems.map((item) => (
+              <li key={item.id} className="navbar__item">
+                <button className="navbar__link" type="button" onClick={() => scrollToSection(item.id)}>
+                  <span className="navbar__icon" aria-hidden="true">{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
         <div className="hero-account-corner" ref={accountCornerRef}>
           <div className="hero-top-controls">
             <button
@@ -1277,7 +1353,8 @@ function App() {
               onClick={() => setLang((current) => current === 'ru' ? 'en' : 'ru')}
               aria-label={lang === 'ru' ? 'Сменить язык' : 'Switch language'}
             >
-              {lang === 'ru' ? 'RU' : 'EN'}
+              <span className="mini-control-label">{t.navLanguage}</span>
+              <strong>{lang === 'ru' ? 'RU' : 'EN'}</strong>
             </button>
             <button
               className="mini-control"
@@ -1285,17 +1362,19 @@ function App() {
               onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}
               aria-label={lang === 'ru' ? 'Сменить тему' : 'Switch theme'}
             >
-              {theme === 'dark' ? '☀' : '🌙'}
+              <span className="mini-control-label">{t.navTheme}</span>
+              <strong>{theme === 'dark' ? 'Light' : 'Dark'}</strong>
+            </button>
+            <button
+              className={accountOpen ? 'account-avatar active' : 'account-avatar'}
+              type="button"
+              onClick={() => setAccountOpen((current) => !current)}
+              aria-label={lang === 'ru' ? 'Открыть аккаунт' : 'Open account'}
+            >
+              <span className="account-avatar-icon">◉</span>
+              <span className="account-avatar-text">{t.navAccount}</span>
             </button>
           </div>
-          <button
-            className={accountOpen ? 'account-avatar active' : 'account-avatar'}
-            type="button"
-            onClick={() => setAccountOpen((current) => !current)}
-            aria-label={lang === 'ru' ? 'Открыть аккаунт' : 'Open account'}
-          >
-            <span className="account-avatar-icon">👤</span>
-          </button>
 
           {accountOpen ? (
             <div className="auth-card hero-auth-card">
@@ -1347,7 +1426,10 @@ function App() {
             </div>
           ) : null}
         </div>
+      </header>
 
+      <section className="hero-screen" id="top-section">
+        <div className="hero-shell">
         <div className="hero-inner">
           <div className="hero-copy">
             <span className="eyebrow">AirParser Platform</span>
@@ -1376,6 +1458,7 @@ function App() {
             <div className="visual-dots dots-top" />
             <div className="visual-dots dots-bottom" />
           </div>
+        </div>
         </div>
       </section>
 
