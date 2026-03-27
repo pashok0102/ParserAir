@@ -986,42 +986,46 @@ def search(request):
     favorite_keys = set(FavoriteTicket.objects.filter(user=request.user).values_list('ticket_key', flat=True))
     server_time = datetime.now(timezone.utc).isoformat()
     tickets_payload = tickets_to_dicts(tickets, favorite_keys=favorite_keys)
-    saved_to = save_search_results(
-        user_id=request.user.id,
-        search_payload={
-            'route': route,
-            'anywhere': anywhere,
-            'date': payload.get('date'),
-            'return_date': payload.get('return_date'),
-            'price_from': price_from,
-            'price_to': price_to,
-            'airline_code': airline_code,
-            'source': source,
-            'limit': limit,
-        },
-        tickets_payload=tickets_payload,
-        server_time=server_time,
-    )
-    history_entry = SearchHistory.objects.create(
-        user=request.user,
-        route=route,
-        anywhere=anywhere,
-        date=str(payload.get('date') or ''),
-        return_date=str(payload.get('return_date') or ''),
-        price_from=price_from,
-        price_to=price_to,
-        airline_code=airline_code or '',
-        source=source,
-        result_count=len(tickets_payload),
-        saved_to=saved_to,
-        server_time=server_time,
-    )
+
+    saved_to = ''
+    history_entry = None
+    if tickets_payload:
+        saved_to = save_search_results(
+            user_id=request.user.id,
+            search_payload={
+                'route': route,
+                'anywhere': anywhere,
+                'date': payload.get('date'),
+                'return_date': payload.get('return_date'),
+                'price_from': price_from,
+                'price_to': price_to,
+                'airline_code': airline_code,
+                'source': source,
+                'limit': limit,
+            },
+            tickets_payload=tickets_payload,
+            server_time=server_time,
+        )
+        history_entry = SearchHistory.objects.create(
+            user=request.user,
+            route=route,
+            anywhere=anywhere,
+            date=str(payload.get('date') or ''),
+            return_date=str(payload.get('return_date') or ''),
+            price_from=price_from,
+            price_to=price_to,
+            airline_code=airline_code or '',
+            source=source,
+            result_count=len(tickets_payload),
+            saved_to=saved_to,
+            server_time=server_time,
+        )
     return JsonResponse(
         {
             'tickets': tickets_payload,
             'server_time': server_time,
             'saved_to': saved_to,
-            'history_id': history_entry.id,
+            'history_id': history_entry.id if history_entry else None,
         }
     )
 

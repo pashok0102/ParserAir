@@ -907,6 +907,7 @@ function App() {
   const rangeDays = form.searchMode === 'range' ? getRangeDays(form.rangeStart, form.rangeEnd) : 0
   const displayedTickets = useMemo(() => sortTicketItems(tickets, sortCheapFirst), [tickets, sortCheapFirst])
   const displayedHistoryTickets = useMemo(() => sortTicketItems(historyTickets, historySortCheapFirst), [historyTickets, historySortCheapFirst])
+  const visibleHistory = useMemo(() => history.filter((item) => (item.result_count ?? 0) > 0), [history])
 
   async function loadFavorites() {
     if (!authUser) {
@@ -1658,10 +1659,10 @@ function App() {
           </div>
 
           {!authUser ? <div className="status-box muted">{t.favoritesAvailable}</div> : null}
-          {authUser && history.length === 0 ? <div className="status-box muted">{t.noHistory}</div> : null}
+          {authUser && visibleHistory.length === 0 ? <div className="status-box muted">{t.noHistory}</div> : null}
 
             <div className="results-grid history-grid">
-              {history.map((item) => (
+              {visibleHistory.map((item) => (
                 <SearchHistoryCard
                   key={`history-${item.id}`}
                   item={item}
