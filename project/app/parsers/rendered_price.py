@@ -173,3 +173,48 @@ def extract_rendered_text_content(
 
     return raw_value or None
 
+
+def extract_rendered_nested_text_price(
+    url: str,
+    parent_selector: str,
+    child_selector: str,
+    price_min: int = 3000,
+    price_max: int = 500000,
+    timeout_ms: int = 45000,
+) -> int | None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception:
+        return None
+
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(locale="ru-RU", user_agent="Mozilla/5.0")
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+            try:
+                page.wait_for_load_state("networkidle", timeout=min(timeout_ms, 10000))
+            except Exception:
+                pass
+            try:
+                page.wait_for_selector(parent_selector, timeout=min(timeout_ms, 12000))
+            except Exception:
+                pass
+            parent = page.locator(parent_selector).first
+            if parent.count() == 0:
+                browser.close()
+                return None
+            child = parent.locator(child_selector).first
+            if child.count() == 0:
+                browser.close()
+                return None
+            raw_value = child.inner_text().strip()
+            browser.close()
+    except Exception:
+        return None
+
+    numeric = int(re.sub(r"\D", "", raw_value)) if raw_value else 0
+    if price_min <= numeric <= price_max:
+        return numeric
+    return None
+

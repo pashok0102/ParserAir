@@ -91,13 +91,11 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 Если после изменений не видно новый результат поиска, запусти новый поиск, а не старую запись из истории.
 
-py -3.11 -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+cd C:\Users\kavik\Documents\GitHub\ParserAir\project
+& .\venv\Scripts\Activate.ps1
 python manage.py migrate
 python manage.py runserver
 
 
-cd project
-npm install
+cd C:\Users\kavik\Documents\GitHub\ParserAir\project\project
 npm run dev

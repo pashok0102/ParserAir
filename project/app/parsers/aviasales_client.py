@@ -15,6 +15,7 @@ from requests.adapters import HTTPAdapter
 from app.config import Settings
 from app.parsers.rendered_price import (
     extract_rendered_attr_price,
+    extract_rendered_nested_text_price,
     extract_rendered_price,
     extract_rendered_text_content,
     extract_rendered_text_price,
@@ -46,7 +47,7 @@ class AviasalesClient:
     EXACT_RENDERED_PRICE_MAX_WORKERS = 6
     EXACT_RENDERED_PRICE_CANDIDATES = 12
     EXACT_PRICE_CACHE_TTL_SECONDS = 300
-    EXACT_PRICE_CACHE_VERSION = "v2-main-price"
+    EXACT_PRICE_CACHE_VERSION = "v3-proposal-main-price"
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -509,27 +510,36 @@ class AviasalesClient:
                 item["baggage_info"] = cached_baggage
             return True
 
-        rendered_price = extract_rendered_text_price(
+        rendered_price = extract_rendered_nested_text_price(
             link,
-            selector='[data-test-id="price"]',
+            parent_selector='[data-test-id="proposal-0"]',
+            child_selector='[data-test-id="price"]',
             price_min=3000,
             price_max=500000,
-            timeout_ms=7000,
+            timeout_ms=9000,
         )
+
+        if rendered_price is None:
+            rendered_price = extract_rendered_text_price(
+                link,
+                selector='[data-test-id="proposal-0"] [data-test-id="price"]',
+                price_min=3000,
+                price_max=500000,
+                timeout_ms=9000,
+            )
 
         if rendered_price is None:
             rendered_price = extract_rendered_price(
                 link,
                 patterns=[
+                    r'data-test-id="proposal-0"[\s\S]{0,2000}?data-test-id="price">(\d{1,3}(?:[ \u00A0\u202F]\d{3})+|\d{4,6})\s*₽',
                     r'data-test-id="price">(\d{1,3}(?:[ \u00A0\u202F]\d{3})+|\d{4,6})\s*₽',
-                    r'data-test-id="proposal-0"[^>]*data-test-price="(\d{3,6})"',
                 ],
                 price_min=3000,
                 price_max=500000,
-                timeout_ms=7000,
+                timeout_ms=9000,
                 pick="first",
             )
-
         if rendered_price is None:
             rendered_price = extract_rendered_attr_price(
                 link,
@@ -537,7 +547,7 @@ class AviasalesClient:
                 attribute='data-test-price',
                 price_min=3000,
                 price_max=500000,
-                timeout_ms=7000,
+                timeout_ms=9000,
             )
 
         if rendered_price is not None:
