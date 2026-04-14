@@ -89,6 +89,9 @@ npm run dev
 Set-ExecutionPolicy -Scope Process Bypass
 ```
 
+
+
+
 Если после изменений не видно новый результат поиска, запусти новый поиск, а не старую запись из истории.
 
 cd C:\Users\kavik\Documents\GitHub\ParserAir\project
@@ -97,5 +100,35 @@ python manage.py migrate
 python manage.py runserver
 
 
+
 cd C:\Users\kavik\Documents\GitHub\ParserAir\project\project
 npm run dev
+
+
+
+
+
+## Mobile React Native
+
+В проект добавлен отдельный мобильный клиент:
+
+- папка: `mobile`
+- стек: React Native + Expo
+
+Быстрый запуск мобильной версии:
+
+```powershell
+cd mobile
+$env:EXPO_PUBLIC_API_BASE_URL="http://IP_ТВОЕГО_КОМПЬЮТЕРА:8000/api"
+npm install
+npx expo start
+```
+
+Backend для телефона нужно поднимать так:
+
+```powershell
+& .\venv\Scripts\Activate.ps1
+python manage.py runserver 0.0.0.0:8000
+```
+
+Подробная инструкция лежит в `mobile\README.md`.

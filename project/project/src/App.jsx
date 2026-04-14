@@ -67,6 +67,15 @@ const TEXT = {
     priceTo: 'Цена до',
     parserChoice: 'Какой парсер использовать',
     parserChoiceText: 'Выбрать можно только один источник. Если включен режим "Хоть куда", поиск идет через Aviasales.',
+    kupibiletHotOption: 'Горячая временная цена Kupibilet',
+    kupibiletHotOptionText: 'Показывает временную скидку с таймером из блока горячих предложений Kupibilet. Работает только для Kupibilet, точного маршрута и строго по выбранной дате или диапазону дат.',
+    hotOfferBadge: 'Горячая цена',
+    oldPrice: 'Старая цена',
+    hotOfferLiveNote: 'Пока таймер активен, показываем временную цену из Kupibilet. После окончания вернётся обычная цена.',
+    hotOfferExpiredNote: 'Временная скидка закончилась. Карточка автоматически вернулась к обычной цене.',
+    shownTickets: 'Показано билетов',
+    visibleTickets: 'Сколько показывать',
+    noHotKupibiletResults: 'Kupibilet не отдал реальные билеты из блока "Наши лазейки" для этого запроса.',
     searchingRange: 'Ищем билеты по диапазону...',
     searchingDate: 'Ищем билеты по выбранной дате...',
     findTickets: 'Найти билеты',
@@ -101,6 +110,7 @@ const TEXT = {
     sortToggle: 'Сортировка по цене',
     sortCheapFirst: 'Сначала дешевле',
     noResults: 'Пока нет результатов. Запусти поиск через окно парсера выше.',
+    noResultsAfterSearch: 'По этому запросу билеты не найдены. Попробуй изменить даты, источник или направление.',
     backendError: 'Нет соединения с backend. Запусти Django API на 127.0.0.1:8000.',
     authFailed: 'Ошибка авторизации',
     favoriteFailed: 'Ошибка избранного',
@@ -184,6 +194,15 @@ const TEXT = {
     priceTo: 'Price to',
     parserChoice: 'Which parser to use',
     parserChoiceText: 'Only one source can be selected. If "Anywhere" is enabled, search uses Aviasales.',
+    kupibiletHotOption: 'Kupibilet temporary hot price',
+    kupibiletHotOptionText: 'Shows a temporary discounted price with a countdown from Kupibilet hot offers. Works only for Kupibilet, an exact route, and strictly within the selected date or date range.',
+    hotOfferBadge: 'Hot deal',
+    oldPrice: 'Old price',
+    hotOfferLiveNote: 'While the timer is active, the temporary discounted Kupibilet price is shown. After it ends the regular price returns.',
+    hotOfferExpiredNote: 'The temporary discount has ended. The card automatically returned to the regular price.',
+    shownTickets: 'Shown tickets',
+    visibleTickets: 'How many to show',
+    noHotKupibiletResults: 'Kupibilet did not return real loophole tickets for this query.',
     searchingRange: 'Searching by range...',
     searchingDate: 'Searching selected date...',
     findTickets: 'Find tickets',
@@ -218,6 +237,7 @@ const TEXT = {
     sortToggle: 'Price sorting',
     sortCheapFirst: 'Cheapest first',
     noResults: 'No results yet. Start a search in the parser window above.',
+    noResultsAfterSearch: 'No tickets were found for this query. Try changing the dates, source, or route.',
     backendError: 'No backend connection. Start Django API on 127.0.0.1:8000.',
     authFailed: 'Authorization failed',
     favoriteFailed: 'Favorite update failed',
@@ -475,15 +495,46 @@ function formatAirlineName(value, lang = 'ru') {
   return raw
 }
 
+function parseTimestamp(value) {
+  if (!value) return 0
+  const parsed = new Date(value).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 function normalizePriceValue(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   const digits = String(value ?? '').replace(/\D/g, '')
   return digits ? Number(digits) : Number.MAX_SAFE_INTEGER
 }
 
-function compareTicketsByPrice(left, right) {
-  const leftPrice = normalizePriceValue(left?.price)
-  const rightPrice = normalizePriceValue(right?.price)
+function isHotOfferActive(ticket, nowMs = Date.now()) {
+  const expiresAt = parseTimestamp(ticket?.hot_expires_at)
+  const originalPrice = normalizePriceValue(ticket?.original_price)
+  const currentPrice = normalizePriceValue(ticket?.price)
+  return Boolean(expiresAt && expiresAt > nowMs && originalPrice < Number.MAX_SAFE_INTEGER && originalPrice > currentPrice)
+}
+
+function getEffectiveTicketPrice(ticket, nowMs = Date.now()) {
+  if (isHotOfferActive(ticket, nowMs)) {
+    return normalizePriceValue(ticket?.price)
+  }
+  const originalPrice = normalizePriceValue(ticket?.original_price)
+  if (originalPrice < Number.MAX_SAFE_INTEGER) return originalPrice
+  return normalizePriceValue(ticket?.price)
+}
+
+function formatCountdown(value, lang = 'ru') {
+  const totalSeconds = Math.max(0, Math.floor(value / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (!totalSeconds) return lang === 'en' ? 'Expired' : 'Завершено'
+  return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+
+function compareTicketsByPrice(left, right, nowMs = Date.now()) {
+  const leftPrice = getEffectiveTicketPrice(left, nowMs)
+  const rightPrice = getEffectiveTicketPrice(right, nowMs)
   if (leftPrice !== rightPrice) return leftPrice - rightPrice
 
   const departureCompare = String(left?.departure_at || '').localeCompare(String(right?.departure_at || ''))
@@ -507,9 +558,9 @@ function compareTicketsByPrice(left, right) {
   return String(left?.ticket_key || left?.link || '').localeCompare(String(right?.ticket_key || right?.link || ''))
 }
 
-function sortTicketItems(items, enabled) {
+function sortTicketItems(items, enabled, nowMs = Date.now()) {
   if (!enabled) return items
-  return [...items].sort(compareTicketsByPrice)
+  return [...items].sort((left, right) => compareTicketsByPrice(left, right, nowMs))
 }
 
 function buildRenderTicketKey(ticket, index, prefix = 'ticket') {
@@ -716,7 +767,7 @@ async function readJson(response) {
   return JSON.parse(rawText)
 }
 
-function TicketCard({ ticket, onToggleFavorite, favoritePending, lang }) {
+function TicketCard({ ticket, onToggleFavorite, favoritePending, lang, nowMs }) {
   const t = TEXT[lang] || TEXT.ru
   const originLabel = translateLocationLabel(ticket.origin, ticket.origin_code, lang)
   const destinationLabel = translateLocationLabel(ticket.destination, ticket.destination_code, lang)
@@ -727,6 +778,13 @@ function TicketCard({ ticket, onToggleFavorite, favoritePending, lang }) {
     ? `${originAirportLabel} → ${destinationAirportLabel}`
     : cityRoute
   const airlineName = formatAirlineName(ticket.airline, lang)
+  const hotOfferActive = isHotOfferActive(ticket, nowMs)
+  const displayPrice = getEffectiveTicketPrice(ticket, nowMs)
+  const originalPrice = normalizePriceValue(ticket.original_price)
+  const countdownValue = parseTimestamp(ticket.hot_expires_at) - nowMs
+  const discountPercent = Number(ticket.hot_discount_percent || 0)
+  const specialOfferLabel = String(ticket.special_offer_label || '').trim()
+  const passiveOfferActive = !hotOfferActive && Boolean(specialOfferLabel)
 
   return (
     <article className="result-card">
@@ -737,22 +795,45 @@ function TicketCard({ ticket, onToggleFavorite, favoritePending, lang }) {
 
         <div className="result-top content-layer">
           <span className="result-source">{ticket.source}</span>
-          <span className={ticket.estimated_price ? 'result-price estimated' : 'result-price'}>
-            {`${ticket.price} RUB`}
-          </span>
+          <div className="result-price-stack">
+            {hotOfferActive && originalPrice < Number.MAX_SAFE_INTEGER ? (
+              <span className="result-price-old">{`${originalPrice} RUB`}</span>
+            ) : null}
+            <span className={ticket.estimated_price ? 'result-price estimated' : 'result-price'}>
+              {`${displayPrice} RUB`}
+            </span>
+          </div>
         </div>
 
-      <strong className="route content-layer">{cityRoute}</strong>
-      <p className="airport-route content-layer">{airportRoute}</p>
-      {airlineName ? <p className="airline-name content-layer">{t.airline}: {airlineName}</p> : null}
-      {ticket.baggage_info ? <p className="airline-name content-layer">{t.baggage}: {ticket.baggage_info}</p> : null}
-      <p className="meta content-layer">{formatTransfers(ticket.transfers, lang)}</p>
-      <p className="meta content-layer">{t.departure}: {formatDateTime(ticket.departure_at, lang)}</p>
-      <div className="price-note content-layer">
-        {ticket.estimated_price
-          ? t.estimatedNote
-          : t.exactNote}
-      </div>
+        <strong className="route content-layer">{cityRoute}</strong>
+        <p className="airport-route content-layer">{airportRoute}</p>
+        {airlineName ? <p className="airline-name content-layer">{t.airline}: {airlineName}</p> : null}
+        {ticket.baggage_info ? <p className="airline-name content-layer">{t.baggage}: {ticket.baggage_info}</p> : null}
+        {hotOfferActive ? (
+          <div className="hot-offer-chip content-layer">
+            <span className="hot-offer-chip-icon" aria-hidden="true">🔥</span>
+            <span>{`${t.hotOfferBadge}: -${discountPercent}% · ${formatCountdown(countdownValue, lang)}`}</span>
+          </div>
+        ) : null}
+        {passiveOfferActive ? (
+          <div className="hot-offer-chip passive content-layer">
+            <span className="hot-offer-chip-icon" aria-hidden="true">🔥</span>
+            <span>{specialOfferLabel}</span>
+          </div>
+        ) : null}
+        <p className="meta content-layer">{formatTransfers(ticket.transfers, lang)}</p>
+        <p className="meta content-layer">{t.departure}: {formatDateTime(ticket.departure_at, lang)}</p>
+        <div className="price-note content-layer">
+          {hotOfferActive
+            ? t.hotOfferLiveNote
+            : passiveOfferActive
+              ? `${specialOfferLabel}. ${lang === 'ru' ? 'Kupibilet не передал таймер для этой карточки.' : 'Kupibilet did not provide a timer for this card.'}`
+              : ticket.original_price
+              ? t.hotOfferExpiredNote
+              : ticket.estimated_price
+                ? t.estimatedNote
+                : t.exactNote}
+        </div>
 
       <div className="card-actions content-layer">
         <button className={ticket.is_favorite ? 'favorite-button active' : 'favorite-button'} type="button" onClick={() => onToggleFavorite(ticket)} disabled={favoritePending}>
@@ -829,7 +910,7 @@ function App() {
   const [form, setForm] = useState({
     from: 'Москва',
     to: 'Сочи',
-    routeMode: 'destination',
+    routeMode: 'anywhere',
     date: defaultDate,
     rangeStart: defaultDate,
     rangeEnd: defaultRangeEnd,
@@ -838,6 +919,7 @@ function App() {
     airlineCode: '',
     searchMode: 'single',
     source: 'aviasales',
+    kupibiletHotOffer: false,
   })
   const [authForm, setAuthForm] = useState({ username: '', password: '' })
   const [authMode, setAuthMode] = useState('login')
@@ -863,6 +945,8 @@ function App() {
   const [error, setError] = useState('')
   const [serverTime, setServerTime] = useState('')
   const [scrollProgress, setScrollProgress] = useState(0)
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const [hasSearched, setHasSearched] = useState(false)
   const t = TEXT[lang] || TEXT.ru
   const sourceOptions = useMemo(
     () => [
@@ -895,7 +979,7 @@ function App() {
 
   const canSearch = useMemo(
     () => {
-      const hasDestination = form.routeMode === 'anywhere' || form.to.trim()
+      const hasDestination = form.kupibiletHotOffer || form.routeMode === 'anywhere' || form.to.trim()
       if (!authUser || !form.from.trim() || !hasDestination || !form.source.trim()) return false
       if (form.searchMode === 'range') {
         return form.rangeStart.trim() && form.rangeEnd.trim()
@@ -905,8 +989,8 @@ function App() {
     [authUser, form]
   )
   const rangeDays = form.searchMode === 'range' ? getRangeDays(form.rangeStart, form.rangeEnd) : 0
-  const displayedTickets = useMemo(() => sortTicketItems(tickets, sortCheapFirst), [tickets, sortCheapFirst])
-  const displayedHistoryTickets = useMemo(() => sortTicketItems(historyTickets, historySortCheapFirst), [historyTickets, historySortCheapFirst])
+  const displayedTickets = useMemo(() => sortTicketItems(tickets, sortCheapFirst, nowTick), [tickets, sortCheapFirst, nowTick])
+  const displayedHistoryTickets = useMemo(() => sortTicketItems(historyTickets, historySortCheapFirst, nowTick), [historyTickets, historySortCheapFirst, nowTick])
   const visibleHistory = useMemo(() => history.filter((item) => (item.result_count ?? 0) > 0), [history])
 
   async function loadFavorites() {
@@ -1028,6 +1112,15 @@ function App() {
   }, [])
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowTick(Date.now())
+    }, 1000)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!authUser) {
       setFavorites([])
       setHistory([])
@@ -1055,6 +1148,7 @@ function App() {
   }
 
   function toggleRouteMode(nextMode) {
+    if (form.kupibiletHotOffer) return
     setForm((current) => ({
       ...current,
       routeMode: nextMode,
@@ -1067,9 +1161,22 @@ function App() {
   }
 
   function toggleSource(nextSource) {
+    if (form.kupibiletHotOffer && nextSource !== 'kupibilet') return
     setForm((current) => ({
       ...current,
       source: nextSource,
+      kupibiletHotOffer: nextSource === 'kupibilet' ? current.kupibiletHotOffer : false,
+    }))
+  }
+
+  function toggleKupibiletHotOffer() {
+    setForm((current) => ({
+      ...current,
+      kupibiletHotOffer: !current.kupibiletHotOffer,
+      source: 'kupibilet',
+      routeMode: current.kupibiletHotOffer ? current.routeMode : 'anywhere',
+      to: '',
+      airlineCode: '',
     }))
   }
 
@@ -1125,6 +1232,7 @@ function App() {
       setFavorites([])
       setHistory([])
       setServerTime('')
+      setHasSearched(false)
     } finally {
       setAuthSubmitting(false)
     }
@@ -1133,6 +1241,9 @@ function App() {
   async function handleToggleFavorite(ticket) {
     if (!authUser || !ticket.ticket_key) return
     setFavoritePendingKey(ticket.ticket_key)
+    const favoritePayload = ticket.is_favorite
+      ? { ticket_key: ticket.ticket_key }
+      : { ...ticket, price: getEffectiveTicketPrice(ticket, nowTick) }
 
     try {
       const endpoint = ticket.is_favorite ? '/api/favorites/remove' : '/api/favorites/add'
@@ -1140,7 +1251,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(ticket.is_favorite ? { ticket_key: ticket.ticket_key } : ticket),
+        body: JSON.stringify(favoritePayload),
       })
       const payload = await readJson(response)
       if (!response.ok) {
@@ -1170,10 +1281,13 @@ function App() {
     setError('')
     setTickets([])
     setServerTime('')
+    setHasSearched(true)
     scrollToSection('output-section')
 
     try {
-      const route = searchForm.routeMode === 'anywhere'
+      const route = searchForm.kupibiletHotOffer
+        ? normalizeLocation(searchForm.from)
+        : searchForm.routeMode === 'anywhere'
         ? normalizeLocation(searchForm.from)
         : `${normalizeLocation(searchForm.from)} - ${normalizeLocation(searchForm.to)}`
       const dateValue = searchForm.searchMode === 'range' ? searchForm.rangeStart : searchForm.date
@@ -1182,17 +1296,18 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          route,
-          anywhere: searchForm.routeMode === 'anywhere',
-          date: dateValue || null,
-          return_date: returnDateValue || null,
-          price_from: searchForm.priceFrom || null,
-          price_to: searchForm.priceTo || null,
-          airline_code: searchForm.airlineCode || null,
-          source: searchForm.source,
-        }),
-      })
+          body: JSON.stringify({
+            route,
+            anywhere: searchForm.kupibiletHotOffer || searchForm.routeMode === 'anywhere',
+            date: dateValue || null,
+            return_date: returnDateValue || null,
+            price_from: searchForm.priceFrom || null,
+            price_to: searchForm.priceTo || null,
+            airline_code: searchForm.airlineCode || null,
+            source: searchForm.source,
+            kupibilet_hot_offer: Boolean(searchForm.kupibiletHotOffer),
+          }),
+        })
 
       const payload = await readJson(response)
       if (!response.ok) {
@@ -1211,6 +1326,9 @@ function App() {
 
       setTickets(applyFavoriteFlags(resolvedTickets, favorites))
       setServerTime(payload.server_time || '')
+      if (searchForm.kupibiletHotOffer && resolvedTickets.length === 0) {
+        setError(t.noHotKupibiletResults)
+      }
       if (authUser) {
         loadHistory().catch(() => {})
       }
@@ -1299,19 +1417,20 @@ function App() {
 
   function handleRepeatSearch(item) {
     const [fromPart, toPart] = String(item.route || '').split(/\s[-–—]+\s/)
-    const nextForm = {
-      from: fromPart || form.from,
-      to: item.anywhere ? '' : (toPart || form.to),
-      routeMode: item.anywhere ? 'anywhere' : 'destination',
-      searchMode: item.return_date ? 'range' : 'single',
+      const nextForm = {
+        from: fromPart || form.from,
+        to: item.anywhere ? '' : (toPart || form.to),
+        routeMode: item.anywhere ? 'anywhere' : 'destination',
+        searchMode: item.return_date ? 'range' : 'single',
       date: item.date || form.date,
       rangeStart: item.date || form.rangeStart,
       rangeEnd: item.return_date || form.rangeEnd,
       priceFrom: item.price_from != null ? String(item.price_from) : '',
-      priceTo: item.price_to != null ? String(item.price_to) : '',
-      airlineCode: item.airline_code || '',
-      source: item.source || form.source,
-    }
+        priceTo: item.price_to != null ? String(item.price_to) : '',
+        airlineCode: item.airline_code || '',
+        source: item.source || form.source,
+        kupibiletHotOffer: false,
+      }
     setForm((current) => ({
       ...current,
       ...nextForm,
@@ -1512,8 +1631,8 @@ function App() {
                     value={form.to}
                     onChange={updateField}
                     placeholder={t.toPlaceholder}
-                    disabled={form.routeMode === 'anywhere'}
-                    className={form.routeMode === 'anywhere' ? 'disabled-input' : ''}
+                    disabled={form.routeMode === 'anywhere' || form.kupibiletHotOffer}
+                    className={form.routeMode === 'anywhere' || form.kupibiletHotOffer ? 'disabled-input' : ''}
                   />
                 </label>
 
@@ -1527,14 +1646,19 @@ function App() {
                   <span className="parser-choice-label">{t.routeLogic}</span>
                   <p className="parser-choice-description">{t.routeText}</p>
                   <div className="date-mode-checks">
-                    <label className={form.routeMode === 'destination' ? 'parser-check active' : 'parser-check'}>
-                      <input type="checkbox" checked={form.routeMode === 'destination'} onChange={() => toggleRouteMode('destination')} />
-                      <span>{t.exactRoute}</span>
-                    </label>
-                    <label className={form.routeMode === 'anywhere' ? 'parser-check active' : 'parser-check'}>
-                      <input type="checkbox" checked={form.routeMode === 'anywhere'} onChange={() => toggleRouteMode('anywhere')} />
-                      <span>{t.anywhere}</span>
-                    </label>
+                      <label className={form.routeMode === 'destination' ? 'parser-check active' : 'parser-check'}>
+                        <input
+                          type="checkbox"
+                          checked={form.routeMode === 'destination'}
+                          onChange={() => toggleRouteMode('destination')}
+                          disabled={form.kupibiletHotOffer}
+                        />
+                        <span>{t.exactRoute}</span>
+                      </label>
+                      <label className={form.routeMode === 'anywhere' ? 'parser-check active' : 'parser-check'}>
+                        <input type="checkbox" checked={form.routeMode === 'anywhere'} onChange={() => toggleRouteMode('anywhere')} disabled={form.kupibiletHotOffer} />
+                        <span>{t.anywhere}</span>
+                      </label>
                   </div>
                 </div>
 
@@ -1582,14 +1706,14 @@ function App() {
                     <span className="parser-choice-label">{t.calendarLogic}</span>
                     <p className="parser-choice-description">{t.calendarText}</p>
                     <div className="date-mode-checks">
-                      <label className={form.searchMode === 'single' ? 'parser-check active' : 'parser-check'}>
-                        <input type="checkbox" checked={form.searchMode === 'single'} onChange={() => toggleSearchMode('single')} />
-                        <span>{t.oneDay}</span>
-                      </label>
-                      <label className={form.searchMode === 'range' ? 'parser-check active' : 'parser-check'}>
-                        <input type="checkbox" checked={form.searchMode === 'range'} onChange={() => toggleSearchMode('range')} />
-                        <span>{t.dateRange}</span>
-                      </label>
+                        <label className={form.searchMode === 'single' ? 'parser-check active' : 'parser-check'}>
+                          <input type="checkbox" checked={form.searchMode === 'single'} onChange={() => toggleSearchMode('single')} />
+                          <span>{t.oneDay}</span>
+                        </label>
+                        <label className={form.searchMode === 'range' ? 'parser-check active' : 'parser-check'}>
+                          <input type="checkbox" checked={form.searchMode === 'range'} onChange={() => toggleSearchMode('range')} />
+                          <span>{t.dateRange}</span>
+                        </label>
                     </div>
                   </div>
                 </div>
@@ -1597,18 +1721,24 @@ function App() {
                 <div className="range-fields price-fields">
                   <label className="field">
                     <span>{t.priceFrom}</span>
-                    <input name="priceFrom" type="number" min="0" value={form.priceFrom} onChange={updateField} placeholder={lang === 'ru' ? 'Например, 5000' : 'For example, 5000'} />
+                    <input name="priceFrom" type="number" min="0" value={form.priceFrom} onChange={updateField} placeholder={lang === 'ru' ? 'Например, 5000' : 'For example, 5000'} disabled={form.kupibiletHotOffer} className={form.kupibiletHotOffer ? 'disabled-input' : ''} />
                   </label>
 
                   <label className="field">
                     <span>{t.priceTo}</span>
-                    <input name="priceTo" type="number" min="0" value={form.priceTo} onChange={updateField} placeholder={lang === 'ru' ? 'Например, 20000' : 'For example, 20000'} />
+                    <input name="priceTo" type="number" min="0" value={form.priceTo} onChange={updateField} placeholder={lang === 'ru' ? 'Например, 20000' : 'For example, 20000'} disabled={form.kupibiletHotOffer} className={form.kupibiletHotOffer ? 'disabled-input' : ''} />
                   </label>
                 </div>
 
                 <label className="field wide">
                   <span>{t.airline}</span>
-                  <select name="airlineCode" value={form.airlineCode} onChange={updateField} className="select-field">
+                  <select
+                    name="airlineCode"
+                    value={form.airlineCode}
+                    onChange={updateField}
+                    className={form.kupibiletHotOffer ? 'select-field disabled-input' : 'select-field'}
+                    disabled={form.kupibiletHotOffer}
+                  >
                     {airlineOptions.map((option) => (
                       <option key={option.value || 'all-airlines'} value={option.value}>
                         {option.label}
@@ -1617,23 +1747,38 @@ function App() {
                   </select>
                 </label>
 
-                <div className="parser-choice">
-                  <span className="parser-choice-label">{t.parserChoice}</span>
-                  <p className="parser-choice-description">{t.parserChoiceText}</p>
-                  <div className="parser-choice-grid">
-                    {sourceOptions.map((option) => (
+                  <div className="parser-choice">
+                    <span className="parser-choice-label">{t.parserChoice}</span>
+                    <p className="parser-choice-description">{t.parserChoiceText}</p>
+                    <div className="parser-choice-grid">
+                      {sourceOptions.map((option) => (
                       <label key={option.value} className={form.source === option.value ? 'parser-check active' : 'parser-check'}>
+                          <input
+                            type="checkbox"
+                            checked={form.source === option.value}
+                            onChange={() => toggleSource(option.value)}
+                            disabled={
+                              form.kupibiletHotOffer
+                                ? option.value !== 'kupibilet'
+                                : form.routeMode === 'anywhere' && option.value !== 'aviasales'
+                            }
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {form.source === 'kupibilet' ? (
+                      <label className={form.kupibiletHotOffer ? 'parser-check active parser-special-option' : 'parser-check parser-special-option'}>
                         <input
                           type="checkbox"
-                          checked={form.source === option.value}
-                          onChange={() => toggleSource(option.value)}
-                          disabled={form.routeMode === 'anywhere' && option.value !== 'aviasales'}
+                          checked={form.kupibiletHotOffer}
+                          onChange={toggleKupibiletHotOffer}
                         />
-                        <span>{option.label}</span>
+                        <span>{t.kupibiletHotOption}</span>
+                        <small>{t.kupibiletHotOptionText}</small>
                       </label>
-                    ))}
+                    ) : null}
                   </div>
-                </div>
 
                 <button className="search-button" type="submit" disabled={!canSearch || loading}>
                   {loading
@@ -1697,15 +1842,16 @@ function App() {
                   </button>
                 </div>
                 <div className="results-grid">
-                  {displayedHistoryTickets.map((ticket, index) => (
-                    <TicketCard
-                      key={buildRenderTicketKey(ticket, index, 'history-ticket')}
-                      ticket={ticket}
-                      onToggleFavorite={handleToggleFavorite}
-                      favoritePending={favoritePendingKey === ticket.ticket_key}
-                      lang={lang}
-                    />
-                  ))}
+                    {displayedHistoryTickets.map((ticket, index) => (
+                      <TicketCard
+                        key={buildRenderTicketKey(ticket, index, 'history-ticket')}
+                        ticket={ticket}
+                        onToggleFavorite={handleToggleFavorite}
+                        favoritePending={favoritePendingKey === ticket.ticket_key}
+                        lang={lang}
+                        nowMs={nowTick}
+                      />
+                    ))}
                 </div>
               </div>
             ) : null}
@@ -1723,11 +1869,11 @@ function App() {
           {!authUser ? <div className="status-box muted">{t.favoritesAvailable}</div> : null}
           {authUser && favorites.length === 0 ? <div className="status-box muted">{t.noFavorites}</div> : null}
 
-          <div className="results-grid">
-            {favorites.map((ticket, index) => (
-              <TicketCard key={buildRenderTicketKey(ticket, index, 'favorite-ticket')} ticket={{ ...ticket, is_favorite: true }} onToggleFavorite={handleToggleFavorite} favoritePending={favoritePendingKey === ticket.ticket_key} lang={lang} />
-            ))}
-          </div>
+            <div className="results-grid">
+              {favorites.map((ticket, index) => (
+                <TicketCard key={buildRenderTicketKey(ticket, index, 'favorite-ticket')} ticket={{ ...ticket, is_favorite: true }} onToggleFavorite={handleToggleFavorite} favoritePending={favoritePendingKey === ticket.ticket_key} lang={lang} nowMs={nowTick} />
+              ))}
+            </div>
         </section>
 
         <section className="panel output-panel" id="output-section">
@@ -1739,20 +1885,20 @@ function App() {
             {serverTime ? <p>{t.updated}: {formatDateTime(serverTime, lang)}</p> : <p>{t.outputHint}</p>}
           </div>
 
-          <div className="results-toolbar">
-            <button
-              className={sortCheapFirst ? 'parser-check active sort-check sort-button' : 'parser-check sort-check sort-button'}
-              type="button"
-              onClick={handleToggleMainSort}
+            <div className="results-toolbar">
+              <button
+                className={sortCheapFirst ? 'parser-check active sort-check sort-button' : 'parser-check sort-check sort-button'}
+                type="button"
+                onClick={handleToggleMainSort}
               aria-pressed={sortCheapFirst}
               disabled={loading}
             >
               <span className="sort-button-mark">{sortCheapFirst ? '✓' : ''}</span>
-              <span>{t.sortToggle}: {t.sortCheapFirst}</span>
-            </button>
-          </div>
+                <span>{t.sortToggle}: {t.sortCheapFirst}</span>
+              </button>
+            </div>
 
-          {error ? <div className="status-box error">{error}</div> : null}
+            {error ? <div className="status-box error">{error}</div> : null}
           {loading ? (
             <div className="loading-panel">
               <div className="loading-head">
@@ -1784,13 +1930,15 @@ function App() {
               </div>
             </div>
           ) : null}
-          {!loading && !error && displayedTickets.length === 0 ? <div className="status-box muted">{t.noResults}</div> : null}
+            {!loading && !error && displayedTickets.length === 0 ? (
+              <div className="status-box muted">{hasSearched ? t.noResultsAfterSearch : t.noResults}</div>
+            ) : null}
 
-          <div className="results-grid">
-            {displayedTickets.map((ticket, index) => (
-              <TicketCard key={buildRenderTicketKey(ticket, index, 'search-ticket')} ticket={ticket} onToggleFavorite={handleToggleFavorite} favoritePending={favoritePendingKey === ticket.ticket_key} lang={lang} />
-            ))}
-          </div>
+            <div className="results-grid">
+              {displayedTickets.map((ticket, index) => (
+                <TicketCard key={buildRenderTicketKey(ticket, index, 'search-ticket')} ticket={ticket} onToggleFavorite={handleToggleFavorite} favoritePending={favoritePendingKey === ticket.ticket_key} lang={lang} nowMs={nowTick} />
+              ))}
+            </div>
         </section>
       </main>
 

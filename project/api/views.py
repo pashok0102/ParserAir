@@ -43,7 +43,7 @@ PARSER_EXECUTORS = {
     'kupibilet': ThreadPoolExecutor(max_workers=KUPIBILET_POOL_WORKERS, thread_name_prefix='kupibilet'),
 }
 SEARCH_CACHE_TTL_SECONDS = 180
-SEARCH_CACHE_VERSION = "v2-main-price"
+SEARCH_CACHE_VERSION = "v5-kupibilet-sales-specials-stable-cards"
 SEARCH_CACHE: dict[tuple, tuple[float, list[Ticket]]] = {}
 SEARCH_CACHE_LOCK = Lock()
 
@@ -93,6 +93,7 @@ def build_search_cache_key(
     departure_date: date | None,
     return_date: date | None,
     anywhere: bool,
+    kupibilet_hot_offer: bool = False,
 ):
     return (
         SEARCH_CACHE_VERSION,
@@ -102,6 +103,7 @@ def build_search_cache_key(
         departure_date.isoformat() if departure_date else None,
         return_date.isoformat() if return_date else None,
         anywhere,
+        kupibilet_hot_offer,
     )
 
 
@@ -188,6 +190,10 @@ def serialize_favorite(favorite: FavoriteTicket) -> dict:
         'is_favorite': True,
         'estimated_price': False,
         'baggage_info': '',
+        'original_price': None,
+        'hot_discount_percent': None,
+        'hot_expires_at': '',
+        'special_offer_label': '',
     }
 
 
@@ -217,8 +223,21 @@ def get_tickets_by_source(
     return_date: date | None,
     anywhere: bool = False,
     anywhere_refine_exact: bool = True,
+    kupibilet_hot_offer: bool = False,
 ) -> list[Ticket]:
     request_limit = 100 if limit is None else max(min(limit, 200), 100)
+
+    if anywhere and source_name == 'kupibilet' and kupibilet_hot_offer:
+        origin_value = route.strip()
+        return run_parser_task(
+            'kupibilet',
+            lambda: kupibilet_client.get_hot_tickets_anywhere(
+                origin_value=origin_value,
+                limit=limit or request_limit,
+                departure_date=departure_date,
+                hot_offer=True,
+            ),
+        )
 
     if anywhere:
         origin_value = route.strip()
@@ -277,6 +296,7 @@ def get_tickets_by_source(
                 request_limit=request_limit,
                 departure_date=departure_date,
                 return_date=return_date,
+                hot_offer=kupibilet_hot_offer,
             ),
         )
 
@@ -309,6 +329,7 @@ def get_tickets_by_source(
                 request_limit=request_limit,
                 departure_date=departure_date,
                 return_date=return_date,
+                hot_offer=kupibilet_hot_offer,
             ),
         ),
     ]
@@ -333,12 +354,21 @@ def get_tickets_for_period(
     departure_date: date | None,
     return_date: date | None,
     anywhere: bool = False,
+    kupibilet_hot_offer: bool = False,
 ) -> list[Ticket]:
     if not departure_date:
-        return get_tickets_by_source(source_name, route, limit, None, None, anywhere=anywhere)
+        return get_tickets_by_source(source_name, route, limit, None, None, anywhere=anywhere, kupibilet_hot_offer=kupibilet_hot_offer)
 
     if not return_date or return_date <= departure_date:
-        return get_tickets_by_source(source_name, route, limit, departure_date, None, anywhere=anywhere)
+        return get_tickets_by_source(
+            source_name,
+            route,
+            limit,
+            departure_date,
+            None,
+            anywhere=anywhere,
+            kupibilet_hot_offer=kupibilet_hot_offer,
+        )
 
     days_count = (return_date - departure_date).days + 1
 
@@ -367,6 +397,7 @@ def get_tickets_for_period(
                 departure_date=current_date,
                 return_date=None,
                 anywhere=False,
+                kupibilet_hot_offer=kupibilet_hot_offer,
             ):
                 dedupe_key = (
                     ticket.source,
@@ -495,7 +526,7 @@ def get_tickets_for_period(
             return tickets
         return tickets[: max(limit * days_count, limit)]
 
-    if source_name == 'kupibilet' and not anywhere:
+    if source_name == 'kupibilet' and not anywhere and not kupibilet_hot_offer:
         aviasales_range = build_fast_reference_range()
         tickets = [kupibilet_client.build_fallback_ticket(ticket) for ticket in aviasales_range]
         if limit is None:
@@ -510,7 +541,9 @@ def get_tickets_for_period(
     def fetch_daily(current_date: date) -> tuple[date, list[Ticket]]:
         daily_limit = limit
         anywhere_refine_exact = True
-        if anywhere:
+        if kupibilet_hot_offer and source_name == 'kupibilet':
+            daily_limit = min(limit or 30, 30)
+        elif anywhere:
             daily_limit = min(limit or 12, 12)
         elif source_name in {'tutu', 'kupibilet', 'both'}:
             daily_limit = min(limit or 3, 3)
@@ -524,6 +557,7 @@ def get_tickets_for_period(
                 return_date=None,
                 anywhere=anywhere,
                 anywhere_refine_exact=anywhere_refine_exact,
+                kupibilet_hot_offer=kupibilet_hot_offer,
             ),
         )
 
@@ -567,6 +601,7 @@ def get_tickets_with_nearest_fallback(
     departure_date: date | None,
     return_date: date | None,
     anywhere: bool = False,
+    kupibilet_hot_offer: bool = False,
 ) -> list[Ticket]:
     cache_key = build_search_cache_key(
         source_name=source_name,
@@ -575,6 +610,7 @@ def get_tickets_with_nearest_fallback(
         departure_date=departure_date,
         return_date=return_date,
         anywhere=anywhere,
+        kupibilet_hot_offer=kupibilet_hot_offer,
     )
     cached_tickets = get_cached_search_result(cache_key)
     if cached_tickets is not None:
@@ -587,8 +623,9 @@ def get_tickets_with_nearest_fallback(
         departure_date=departure_date,
         return_date=return_date,
         anywhere=anywhere,
+        kupibilet_hot_offer=kupibilet_hot_offer,
     )
-    if tickets or anywhere or not departure_date or return_date:
+    if tickets or anywhere or not departure_date or return_date or kupibilet_hot_offer:
         set_cached_search_result(cache_key, tickets)
         return tickets
 
@@ -606,6 +643,7 @@ def get_tickets_with_nearest_fallback(
             departure_date=fallback_date,
             return_date=None,
             anywhere=False,
+            kupibilet_hot_offer=kupibilet_hot_offer,
         )
         if fallback_tickets:
             set_cached_search_result(cache_key, fallback_tickets)
@@ -699,6 +737,10 @@ def tickets_to_dicts(tickets: list[Ticket], favorite_keys: set[str] | None = Non
                 'is_favorite': ticket_key in favorite_keys,
                 'estimated_price': bool(getattr(ticket, 'estimated_price', False)),
                 'baggage_info': str(getattr(ticket, 'baggage_info', '') or ''),
+                'original_price': getattr(ticket, 'original_price', None),
+                'hot_discount_percent': getattr(ticket, 'hot_discount_percent', None),
+                'hot_expires_at': str(getattr(ticket, 'hot_expires_at', '') or ''),
+                'special_offer_label': str(getattr(ticket, 'special_offer_label', '') or ''),
             }
         )
     return result
@@ -928,11 +970,12 @@ def search(request):
         return JsonResponse({'error': 'Маршрут обязателен'}, status=400)
 
     anywhere = bool(payload.get('anywhere'))
+    kupibilet_hot_offer = bool(payload.get('kupibilet_hot_offer'))
 
     source = str(payload.get('source', 'both')).strip().lower() or 'both'
     if source not in {'aviasales', 'tutu', 'kupibilet', 'both'}:
         return JsonResponse({'error': 'Неверный источник'}, status=400)
-    if anywhere:
+    if anywhere and not kupibilet_hot_offer:
         source = 'aviasales'
 
     raw_limit = payload.get('limit')
@@ -960,6 +1003,11 @@ def search(request):
         return JsonResponse({'error': 'Дата по не может быть раньше даты с'}, status=400)
     if price_from is not None and price_to is not None and price_to < price_from:
         return JsonResponse({'error': 'Цена до не может быть меньше цены от'}, status=400)
+    if kupibilet_hot_offer:
+        if source != 'kupibilet':
+            return JsonResponse({'error': 'Горячая временная цена доступна только для Kupibilet'}, status=400)
+        if not departure_date:
+            return JsonResponse({'error': 'Для горячей временной цены нужна дата вылета'}, status=400)
 
     fetch_limit = limit
     if limit is not None and (price_from is not None or price_to is not None):
@@ -973,6 +1021,7 @@ def search(request):
             departure_date=departure_date,
             return_date=return_date,
             anywhere=anywhere,
+            kupibilet_hot_offer=kupibilet_hot_offer,
         )
         tickets = filter_tickets_by_price(tickets, price_from, price_to)
         tickets = filter_tickets_by_airline(tickets, airline_code)
@@ -1002,6 +1051,7 @@ def search(request):
                 'airline_code': airline_code,
                 'source': source,
                 'limit': limit,
+                'kupibilet_hot_offer': kupibilet_hot_offer,
             },
             tickets_payload=tickets_payload,
             server_time=server_time,

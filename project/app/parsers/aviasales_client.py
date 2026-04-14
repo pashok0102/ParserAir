@@ -15,8 +15,11 @@ from requests.adapters import HTTPAdapter
 from app.config import Settings
 from app.parsers.rendered_price import (
     extract_rendered_attr_price,
+    extract_rendered_kupibilet_special_cards,
     extract_rendered_nested_text_price,
+    extract_rendered_page_payload,
     extract_rendered_price,
+    extract_rendered_ticket_cards,
     extract_rendered_text_content,
     extract_rendered_text_price,
 )
@@ -35,6 +38,10 @@ class Ticket:
     updated_at: str = ""
     estimated_price: bool = False
     baggage_info: str = ""
+    original_price: int | None = None
+    hot_discount_percent: int | None = None
+    hot_expires_at: str = ""
+    special_offer_label: str = ""
 
 
 class AviasalesClient:
@@ -1015,7 +1022,19 @@ class KupibiletClient:
         request_limit: int = 100,
         departure_date: date | None = None,
         return_date: date | None = None,
+        hot_offer: bool = False,
     ) -> list[Ticket]:
+        if hot_offer and self._is_origin_only_route(route):
+            origin_value = route.strip()
+            if not origin_value:
+                return []
+            dep_date = departure_date or datetime.now(timezone.utc).date()
+            return self._get_kupibilet_origin_only_hot_tickets(
+                origin_value=origin_value,
+                departure_date=dep_date,
+                limit=limit,
+            )
+
         iata_from, iata_to = self.aviasales_client.parse_route_to_iata(route)
         fallback_ticket = self._get_reference_ticket(
             route=route,
@@ -1026,6 +1045,28 @@ class KupibiletClient:
         fallback_airline = fallback_ticket.airline if fallback_ticket else ""
         dep_date = departure_date or datetime.now(timezone.utc).date()
         route_link = self._build_kupibilet_search_link(iata_from.upper(), iata_to.upper(), dep_date, return_date)
+
+        if hot_offer and departure_date and not return_date:
+            sales_tickets = self._get_kupibilet_sales_offer_tickets(
+                origin_code=iata_from.upper(),
+                start_date=dep_date,
+                end_date=dep_date,
+                limit=max(1, limit),
+                destination_code=iata_to.upper(),
+            )
+            if sales_tickets:
+                return sales_tickets[: max(1, limit)]
+
+            hot_ticket = self._get_kupibilet_hot_offer_ticket(
+                route_link=route_link,
+                iata_from=iata_from,
+                iata_to=iata_to,
+                departure_date=dep_date,
+                fallback_ticket=fallback_ticket,
+            )
+            if hot_ticket is not None:
+                return [hot_ticket]
+            return []
 
         route_min_price = self._fetch_kupibilet_route_min_price(route_link, dep_date, return_date)
         used_fallback = False
@@ -1045,10 +1086,230 @@ class KupibiletClient:
                 departure_at=departure_at,
                 transfers=fallback_ticket.transfers if fallback_ticket else 0,
                 link=route_link,
-                source="Kupibilet",
-                updated_at=datetime.now(timezone.utc).isoformat(),
+                  source="Kupibilet",
+                  updated_at=datetime.now(timezone.utc).isoformat(),
+              )
+          ]
+
+    def get_hot_tickets_anywhere(
+        self,
+        origin_value: str,
+        limit: int = 10,
+        departure_date: date | None = None,
+        hot_offer: bool = False,
+    ) -> list[Ticket]:
+        safe_limit = max(1, limit)
+        dep_date = departure_date or datetime.now(timezone.utc).date()
+
+        if hot_offer:
+            hot_tickets = self._get_kupibilet_origin_only_hot_tickets(
+                origin_value=origin_value,
+                departure_date=dep_date,
+                limit=safe_limit,
             )
-        ]
+            if hot_tickets:
+                return hot_tickets[:safe_limit]
+            return []
+
+        reference_tickets = self.aviasales_client.get_hot_tickets_anywhere(
+            origin_value=origin_value,
+            limit=safe_limit,
+            request_limit=max(100, safe_limit * 8),
+            departure_date=dep_date,
+            refine_exact=True,
+        )
+        if not reference_tickets:
+            reference_tickets = self.aviasales_client.get_hot_tickets_anywhere(
+                origin_value=origin_value,
+                limit=safe_limit,
+                request_limit=max(100, safe_limit * 8),
+                departure_date=dep_date,
+                refine_exact=False,
+            )
+
+        tickets: list[Ticket] = []
+        seen_keys: set[tuple[str, str, int]] = set()
+        for reference_ticket in reference_tickets:
+            dedupe_key = (
+                reference_ticket.destination,
+                reference_ticket.departure_at,
+                reference_ticket.price,
+            )
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            fallback_ticket = self.build_fallback_ticket(reference_ticket)
+            tickets.append(fallback_ticket)
+            if len(tickets) >= safe_limit:
+                break
+        return tickets
+
+    @staticmethod
+    def _is_origin_only_route(route: str) -> bool:
+        cleaned = str(route or "").strip()
+        if not cleaned:
+            return False
+        return all(separator not in cleaned for separator in (" - ", " — ", " – "))
+
+    def _get_kupibilet_origin_only_hot_tickets(
+        self,
+        origin_value: str,
+        departure_date: date,
+        limit: int,
+    ) -> list[Ticket]:
+        try:
+            origin_code = self.aviasales_client._resolve_location_code(origin_value).upper()
+        except requests.RequestException:
+            return []
+        except ValueError:
+            return []
+
+        sales_tickets = self._get_kupibilet_sales_offer_tickets(
+            origin_code=origin_code,
+            start_date=departure_date,
+            end_date=departure_date,
+            limit=limit,
+        )
+        if sales_tickets:
+            return sales_tickets
+
+        route_link = self._build_kupibilet_origin_only_link(origin_code, departure_date)
+        offers = self._extract_hot_offer_payloads(route_link)
+        if not offers:
+            return []
+
+        tickets: list[Ticket] = []
+        seen_keys: set[tuple[str, int, str]] = set()
+        updated_at = datetime.now(timezone.utc).isoformat()
+
+        for offer in offers:
+            destination_name = str(offer.get("destination_name") or "").strip()
+            if not destination_name:
+                continue
+
+            try:
+                destination_code = self.aviasales_client._resolve_location_code(destination_name).upper()
+            except Exception:
+                destination_code = destination_name.upper()
+
+            departure_at = datetime.combine(departure_date, datetime.min.time(), tzinfo=timezone.utc).isoformat()
+            link = self._normalize_kupibilet_booking_link(str(offer.get("link") or route_link))
+            ticket_key = (destination_code, int(offer["price"]), link)
+            if ticket_key in seen_keys:
+                continue
+            seen_keys.add(ticket_key)
+
+            tickets.append(
+                Ticket(
+                    origin=origin_code,
+                    destination=destination_code,
+                    price=int(offer["price"]),
+                    airline="Горячая цена Kupibilet",
+                    departure_at=departure_at,
+                    transfers=0,
+                    link=link,
+                    source="Kupibilet",
+                    updated_at=updated_at,
+                    original_price=int(offer["original_price"]),
+                    hot_discount_percent=int(offer["discount_percent"]),
+                    hot_expires_at=str(offer["expires_at"]),
+                    special_offer_label=str(offer.get("label") or "Горячая цена"),
+                )
+            )
+
+            if len(tickets) >= max(1, limit):
+                break
+
+        tickets.sort(key=lambda item: (item.price, item.destination))
+        return tickets
+
+    def _get_kupibilet_hot_offer_ticket(
+        self,
+        route_link: str,
+        iata_from: str,
+        iata_to: str,
+        departure_date: date,
+        fallback_ticket: Ticket | None,
+    ) -> Ticket | None:
+        offer = self._extract_hot_offer_payload(route_link, iata_from=iata_from, iata_to=iata_to)
+        if not offer:
+            return None
+
+        departure_at = (
+            fallback_ticket.departure_at
+            if fallback_ticket and fallback_ticket.departure_at
+            else datetime.combine(departure_date, datetime.min.time(), tzinfo=timezone.utc).isoformat()
+        )
+        transfers = fallback_ticket.transfers if fallback_ticket else 0
+        airline = fallback_ticket.airline if fallback_ticket and fallback_ticket.airline else "Горячая цена Kupibilet"
+
+        return Ticket(
+            origin=iata_from,
+            destination=iata_to,
+            price=int(offer["price"]),
+            airline=airline,
+            departure_at=departure_at,
+            transfers=transfers,
+            link=self._normalize_kupibilet_booking_link(str(offer.get("link") or route_link)),
+            source="Kupibilet",
+            updated_at=datetime.now(timezone.utc).isoformat(),
+            original_price=int(offer["original_price"]),
+            hot_discount_percent=int(offer["discount_percent"]),
+            hot_expires_at=str(offer["expires_at"]),
+            special_offer_label="Горячая цена",
+        )
+
+    def _get_kupibilet_rendered_fallback_tickets(
+        self,
+        route_link: str,
+        iata_from: str,
+        iata_to: str,
+        departure_date: date,
+        limit: int,
+    ) -> list[Ticket]:
+        cards = extract_rendered_ticket_cards(route_link, limit=max(1, limit))
+        if not cards:
+            return []
+
+        tickets: list[Ticket] = []
+        seen_links: set[str] = set()
+        updated_at = datetime.now(timezone.utc).isoformat()
+
+        for card in cards:
+            href = str(card.get("href") or "").strip()
+            if not href or href in seen_links:
+                continue
+            seen_links.add(href)
+
+            price = self._extract_first_price_number(str(card.get("price_text") or ""))
+            if price is None:
+                continue
+
+            full_text = str(card.get("text") or "")
+            baggage_info = self._extract_baggage_info_from_card(str(card.get("baggage_text") or ""), full_text)
+            departure_at = self._extract_departure_at_from_card(full_text, departure_date)
+            transfers = self._extract_transfers_from_card(full_text)
+
+            tickets.append(
+                Ticket(
+                    origin=iata_from,
+                    destination=iata_to,
+                    price=price,
+                    airline="Kupibilet",
+                    departure_at=departure_at,
+                    transfers=transfers,
+                    link=href if href.startswith("http") else f"https://www.kupibilet.ru{href}",
+                    source="Kupibilet",
+                    updated_at=updated_at,
+                    baggage_info=baggage_info,
+                    special_offer_label="Kupibilet",
+                )
+            )
+
+            if len(tickets) >= max(1, limit):
+                break
+
+        return tickets
 
     def _get_reference_ticket(
         self,
@@ -1178,6 +1439,238 @@ class KupibiletClient:
             return numeric
         return None
 
+    def _extract_hot_offer_payload(self, url: str, iata_from: str, iata_to: str) -> dict | None:
+        offers = self._extract_hot_offer_payloads(url, iata_from=iata_from, iata_to=iata_to)
+        return offers[0] if offers else None
+
+    def _extract_hot_offer_payloads(
+        self,
+        url: str,
+        iata_from: str = "",
+        iata_to: str = "",
+    ) -> list[dict]:
+        page_payload = extract_rendered_page_payload(url, timeout_ms=16000)
+        if not page_payload:
+            return []
+
+        text, html = page_payload
+        route_patterns, route_tokens = self._build_hot_offer_route_matchers(iata_from=iata_from, iata_to=iata_to)
+
+        normalized_text = re.sub(r"\s+", " ", text or "")
+        normalized_html = re.sub(r"\s+", " ", html or "")
+
+        payloads = self._find_hot_offer_in_payload(normalized_text, route_patterns, route_tokens)
+        if payloads:
+            return payloads
+        return self._find_hot_offer_in_payload(normalized_html, route_patterns, route_tokens)
+
+    def _build_hot_offer_route_matchers(self, iata_from: str, iata_to: str) -> tuple[list[str], set[str]]:
+        route_patterns: list[str] = []
+        route_tokens: set[str] = {iata_from.upper(), iata_to.upper()}
+
+        origin_names = {
+            self.aviasales_client.resolve_location_name(iata_from),
+            iata_from.upper(),
+        }
+        destination_names = {
+            self.aviasales_client.resolve_location_name(iata_to),
+            iata_to.upper(),
+        }
+
+        for value in origin_names | destination_names:
+            cleaned = re.sub(r"\s+", " ", str(value or "").strip())
+            if cleaned:
+                route_tokens.add(cleaned.lower())
+                route_tokens.update(token.lower() for token in re.findall(r"[A-Za-zА-Яа-яЁё]+", cleaned) if len(token) >= 3)
+
+        if iata_from and iata_to:
+            for left in origin_names:
+                for right in destination_names:
+                    if left and right:
+                        route_patterns.append(rf"{re.escape(left)}\s*[—–-]\s*{re.escape(right)}")
+
+        return route_patterns, route_tokens
+
+    def _find_hot_offer_in_payload(self, payload: str, route_patterns: list[str], route_tokens: set[str]) -> list[dict]:
+        if not payload:
+            return []
+
+        windows: list[str] = []
+        if route_patterns:
+            for route_pattern in route_patterns:
+                for match in re.finditer(route_pattern, payload, flags=re.IGNORECASE):
+                    start = max(0, match.start() - 700)
+                    end = min(len(payload), match.end() + 700)
+                    windows.append(payload[start:end])
+        timer_pattern = re.compile(
+            r"(?:скидка\s*)?[−-]?\s*(\d{1,2})%\s*(?:[∙·•]|&middot;|\.)?\s*(\d{1,2}:\d{2}:\d{2})",
+            flags=re.IGNORECASE,
+        )
+        for match in timer_pattern.finditer(payload):
+            start = max(0, match.start() - 900)
+            end = min(len(payload), match.end() + 1600)
+            windows.append(payload[start:end])
+
+        if not windows:
+            windows = [payload]
+
+        offers: list[dict] = []
+        seen_chunks: set[str] = set()
+
+        for chunk in windows:
+            fingerprint = chunk[:400]
+            if fingerprint in seen_chunks:
+                continue
+            seen_chunks.add(fingerprint)
+
+            timer_match = timer_pattern.search(chunk)
+            if not timer_match:
+                continue
+
+            unique_prices = self._extract_hot_offer_prices(chunk)
+            if len(unique_prices) < 2:
+                continue
+
+            original_price = max(unique_prices[0], unique_prices[1])
+            current_price = min(unique_prices[0], unique_prices[1])
+            if current_price >= original_price:
+                continue
+
+            timer_text = timer_match.group(2)
+            expires_at = self._build_hot_offer_expiry(timer_text)
+            if not expires_at:
+                continue
+
+            offer_link = self._extract_hot_offer_link(chunk)
+            discount_percent = int(timer_match.group(1))
+            score = self._score_hot_offer_chunk(chunk, route_patterns, route_tokens)
+            if offer_link:
+                score += 2
+            route_names = self._extract_hot_offer_route_names(chunk)
+
+            candidate = {
+                "price": current_price,
+                "original_price": original_price,
+                "discount_percent": discount_percent,
+                "expires_at": expires_at,
+                "link": offer_link,
+                "score": score,
+            }
+            if route_names:
+                candidate["origin_name"] = route_names[0]
+                candidate["destination_name"] = route_names[1]
+            if "скидка" in chunk.lower():
+                candidate["label"] = "Скидка"
+            offers.append(candidate)
+
+        offers.sort(key=lambda item: (-int(item.get("score", 0)), int(item["price"])))
+        return offers
+
+    def _extract_hot_offer_prices(self, chunk: str) -> list[int]:
+        price_matches = re.findall(r"(\d{1,3}(?:[ \u00A0]\d{3})+|\d{4,6})\s*₽", chunk)
+        unique_prices: list[int] = []
+        for raw in price_matches:
+            numeric = int(re.sub(r"\D", "", raw))
+            if not (self.PRICE_MIN <= numeric <= self.PRICE_MAX):
+                continue
+            if numeric not in unique_prices:
+                unique_prices.append(numeric)
+        return unique_prices
+
+    @staticmethod
+    def _extract_first_price_number(text: str) -> int | None:
+        match = re.search(r"(\d{1,3}(?:[ \u00A0]\d{3})+|\d{4,6})", text or "")
+        if not match:
+            return None
+        value = int(re.sub(r"\D", "", match.group(1)))
+        if value <= 0:
+            return None
+        return value
+
+    @staticmethod
+    def _extract_baggage_info_from_card(baggage_text: str, full_text: str) -> str:
+        source = baggage_text or full_text
+        match = re.search(r"(Багаж\s+\d+\s*кг(?:\s*[×x]\s*\d+)?)", source, flags=re.IGNORECASE)
+        if match:
+            return re.sub(r"\s+", " ", match.group(1)).strip()
+        return ""
+
+    @staticmethod
+    def _extract_departure_at_from_card(full_text: str, departure_date: date) -> str:
+        match = re.search(r"(\d{1,2}:\d{2})", full_text or "")
+        if not match:
+            return datetime.combine(departure_date, datetime.min.time(), tzinfo=timezone.utc).isoformat()
+        hour, minute = [int(part) for part in match.group(1).split(":")]
+        return datetime.combine(
+            departure_date,
+            datetime.min.time().replace(hour=hour, minute=minute),
+            tzinfo=timezone.utc,
+        ).isoformat()
+
+    @staticmethod
+    def _extract_transfers_from_card(full_text: str) -> int:
+        lowered = (full_text or "").lower()
+        if "без пересадок" in lowered:
+            return 0
+        match = re.search(r"(\d+)\s+пересад", lowered)
+        if not match:
+            return 0
+        return int(match.group(1))
+
+    @staticmethod
+    def _extract_hot_offer_link(chunk: str) -> str:
+        match = re.search(
+            r"(https://www\.kupibilet\.ru/(?:mbooking|booking)/step[01]/[^\s\"'<>]+|/(?:mbooking|booking)/step[01]/[^\s\"'<>]+)",
+            chunk,
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return ""
+        return KupibiletClient._normalize_kupibilet_booking_link(match.group(1))
+
+    @staticmethod
+    def _extract_hot_offer_route_names(chunk: str) -> tuple[str, str] | None:
+        route_match = re.search(
+            r"([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё\s-]{1,80}?)\s*[—–-]\s*([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё\s-]{1,80}?)",
+            chunk,
+            flags=re.IGNORECASE,
+        )
+        if not route_match:
+            return None
+
+        left = re.sub(r"\s+", " ", route_match.group(1)).strip(" -—–")
+        right = re.sub(r"\s+", " ", route_match.group(2)).strip(" -—–")
+        if not left or not right:
+            return None
+        return left, right
+
+    @staticmethod
+    def _score_hot_offer_chunk(chunk: str, route_patterns: list[str], route_tokens: set[str]) -> int:
+        score = 0
+        lowered = chunk.lower()
+        for route_pattern in route_patterns:
+            if re.search(route_pattern, chunk, flags=re.IGNORECASE):
+                score += 6
+        for token in route_tokens:
+            if token and token in lowered:
+                score += 1
+        if "на карте" in lowered:
+            score += 1
+        if "о городе" in lowered:
+            score += 1
+        return score
+
+    @staticmethod
+    def _build_hot_offer_expiry(timer_text: str) -> str:
+        try:
+            hours, minutes, seconds = [int(part) for part in timer_text.split(":")]
+        except Exception:
+            return ""
+        if hours < 0 or minutes < 0 or seconds < 0:
+            return ""
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=hours, minutes=minutes, seconds=seconds)
+        return expires_at.isoformat()
+
     @classmethod
     def _build_kupibilet_search_link(
         cls,
@@ -1206,5 +1699,191 @@ class KupibiletClient:
         parts.append("v=2")
         parts.append(f"filter={cls.FILTER_PARAM}")
         return "&".join(parts)
+
+    @classmethod
+    def _build_kupibilet_origin_only_link(cls, origin: str, departure_date: date | None) -> str:
+        dep = departure_date.isoformat() if departure_date else datetime.now().date().isoformat()
+        route0 = f"iatax:{origin}_{dep}_date_{dep}"
+        parts = [
+            "https://www.kupibilet.ru/search?adult=1",
+            "cabinClass=Y",
+            "child=0",
+            "childrenAges=[]",
+            "infant=0",
+            f"route[0]={route0}",
+            "v=2",
+        ]
+        return "&".join(parts)
+
+    @staticmethod
+    def _normalize_kupibilet_booking_link(value: str) -> str:
+        normalized = str(value or "").strip()
+        if not normalized:
+            return ""
+        if normalized.startswith("/"):
+            normalized = f"https://www.kupibilet.ru{normalized}"
+        normalized = normalized.replace("https://www.kupibilet.ru/booking/step0/", "https://www.kupibilet.ru/mbooking/step0/")
+        normalized = normalized.replace("https://www.kupibilet.ru/booking/step1/", "https://www.kupibilet.ru/mbooking/step1/")
+        normalized = normalized.replace("https://www.kupibilet.ru//", "https://www.kupibilet.ru/")
+        return normalized
+
+    @staticmethod
+    def _extract_discount_percent_from_label(text: str, price: int, original_price: int | None) -> int | None:
+        match = re.search(r"(\d{1,2})\s*%", text or "", flags=re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+        if original_price and original_price > price > 0:
+            return max(1, round((original_price - price) * 100 / original_price))
+        return None
+
+    @staticmethod
+    def _extract_special_offer_label_from_text(text: str) -> str:
+        source = re.sub(r"\s+", " ", str(text or "")).strip()
+        if not source:
+            return ""
+
+        timer_match = re.search(
+            r"([−-]\s*\d{1,2}%\s*[∙·•]?\s*\d{1,2}:\d{2}:\d{2}|Скидка\s*\d{1,2}%|Выгодно|Супер\s+выгодно)",
+            source,
+            flags=re.IGNORECASE,
+        )
+        if not timer_match:
+            return ""
+        return re.sub(r"\s+", " ", timer_match.group(1)).strip()
+
+    @staticmethod
+    def _card_mentions_target_date(text: str, target_date: date) -> bool:
+        source = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+        if not source:
+            return False
+
+        month_map = {
+            "янв": 1,
+            "январ": 1,
+            "фев": 2,
+            "феврал": 2,
+            "мар": 3,
+            "март": 3,
+            "апр": 4,
+            "апрел": 4,
+            "мая": 5,
+            "май": 5,
+            "июн": 6,
+            "июн": 6,
+            "июл": 7,
+            "июл": 7,
+            "авг": 8,
+            "август": 8,
+            "сен": 9,
+            "сентябр": 9,
+            "окт": 10,
+            "октябр": 10,
+            "ноя": 11,
+            "ноябр": 11,
+            "дек": 12,
+            "декабр": 12,
+        }
+
+        for match in re.finditer(r"(\d{1,2})\s+([а-яё]{3,10})", source, flags=re.IGNORECASE):
+            day = int(match.group(1))
+            raw_month = match.group(2)
+            month = None
+            for key, value in month_map.items():
+                if raw_month.startswith(key):
+                    month = value
+                    break
+            if month == target_date.month and day == target_date.day:
+                return True
+        return False
+
+    def _get_kupibilet_sales_offer_tickets(
+        self,
+        origin_code: str,
+        start_date: date,
+        end_date: date,
+        limit: int,
+        destination_code: str = "",
+    ) -> list[Ticket]:
+        sales_link = f"https://www.kupibilet.ru/sales?departureCity={origin_code}"
+        destination_filter = str(destination_code or "").upper()
+        cards = extract_rendered_kupibilet_special_cards(
+            sales_link,
+            limit=max(120, max(1, limit) * 12),
+            timeout_ms=40000,
+        )
+        if not cards:
+            return []
+
+        tickets: list[Ticket] = []
+        seen_links: set[str] = set()
+        updated_at = datetime.now(timezone.utc).isoformat()
+
+        for card in cards:
+            try:
+                payload = json.loads(str(card.get("json") or ""))
+            except json.JSONDecodeError:
+                continue
+
+            departure_time = str(payload.get("departureTime") or "")
+            try:
+                departure_dt = datetime.fromisoformat(departure_time.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+
+            dep_date = departure_dt.date()
+            offers_payload = payload.get("offers") or {}
+            raw_link = str(offers_payload.get("url") or "")
+            link = self._normalize_kupibilet_booking_link(raw_link)
+            if not link or link in seen_links:
+                continue
+
+            price = self._extract_first_price_number(str(offers_payload.get("price") or ""))
+            if price is None:
+                price = self._extract_first_price_number(str(card.get("current_price_text") or ""))
+            if price is None:
+                continue
+
+            seen_links.add(link)
+            original_price = self._extract_first_price_number(str(card.get("original_price_text") or ""))
+            full_text = str(card.get("text") or "")
+            if dep_date < start_date or dep_date > end_date:
+                if not (start_date == end_date and self._card_mentions_target_date(full_text, start_date)):
+                    continue
+            tag_text = re.sub(r"\s+", " ", str(card.get("tag_text") or "").strip())
+            if not tag_text:
+                tag_text = self._extract_special_offer_label_from_text(full_text)
+            timer_match = re.search(r"(\d{1,2}:\d{2}:\d{2})", tag_text)
+            expires_at = self._build_hot_offer_expiry(timer_match.group(1)) if timer_match else ""
+            discount_percent = self._extract_discount_percent_from_label(tag_text, price, original_price)
+            airline_name = str((payload.get("provider") or {}).get("name") or "Kupibilet")
+            current_destination_code = str((payload.get("arrivalAirport") or {}).get("iataCode") or "").upper()
+            if not current_destination_code:
+                continue
+            if destination_filter and current_destination_code != destination_filter:
+                continue
+
+            tickets.append(
+                Ticket(
+                    origin=origin_code,
+                    destination=current_destination_code,
+                    price=price,
+                    airline=airline_name,
+                    departure_at=departure_dt.astimezone(timezone.utc).isoformat(),
+                    transfers=self._extract_transfers_from_card(full_text),
+                    link=link,
+                    source="Kupibilet",
+                    updated_at=updated_at,
+                    original_price=original_price,
+                    hot_discount_percent=discount_percent,
+                    hot_expires_at=expires_at,
+                    special_offer_label=tag_text or "Наши лазейки",
+                )
+            )
+
+            if len(tickets) >= max(1, limit):
+                break
+
+        tickets.sort(key=lambda item: (item.price, item.departure_at, item.destination))
+        return tickets
 
 
