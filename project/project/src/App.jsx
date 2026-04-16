@@ -17,6 +17,7 @@ const TEXT = {
     exactNote: 'Цена может отличаться на 300-400 RUB из-за времени обновления выдачи, комиссии источника или изменения тарифа в момент перехода.',
     removeFavorite: 'Убрать из избранного',
     addFavorite: 'В избранное',
+    loginToFavorite: 'Войдите для избранного',
     openTicket: 'Открыть билет',
     account: 'Аккаунт',
     active: 'Активен',
@@ -66,10 +67,11 @@ const TEXT = {
     priceFrom: 'Цена от',
     priceTo: 'Цена до',
     parserChoice: 'Какой парсер использовать',
-    parserChoiceText: 'Выбрать можно только один источник. Если включен режим "Хоть куда", поиск идет через Aviasales.',
+    parserChoiceText: 'Выбрать можно только один источник. В режиме "Хоть куда" доступны обычный поиск через Aviasales и отдельный режим горячих временных предложений Kupibilet.',
     kupibiletHotOption: 'Горячая временная цена Kupibilet',
-    kupibiletHotOptionText: 'Показывает временную скидку с таймером из блока горячих предложений Kupibilet. Работает только для Kupibilet, точного маршрута и строго по выбранной дате или диапазону дат.',
+    kupibiletHotOptionText: 'Показывает временную скидку с таймером из блока горячих предложений Kupibilet. Работает для Kupibilet в режиме "Хоть куда" и ищет строго по выбранной дате или диапазону дат.',
     hotOfferBadge: 'Горячая цена',
+    hotOfferExpiredBadge: 'Время истекло',
     oldPrice: 'Старая цена',
     hotOfferLiveNote: 'Пока таймер активен, показываем временную цену из Kupibilet. После окончания вернётся обычная цена.',
     hotOfferExpiredNote: 'Временная скидка закончилась. Карточка автоматически вернулась к обычной цене.',
@@ -111,7 +113,8 @@ const TEXT = {
     sortCheapFirst: 'Сначала дешевле',
     noResults: 'Пока нет результатов. Запусти поиск через окно парсера выше.',
     noResultsAfterSearch: 'По этому запросу билеты не найдены. Попробуй изменить даты, источник или направление.',
-    backendError: 'Нет соединения с backend. Запусти Django API на 127.0.0.1:8000.',
+    backendError: 'Запрос до backend не дошёл. Проверь, что Django API запущен, и повтори поиск.',
+    searchRequestError: 'Поисковый запрос не выполнился. Повтори попытку ещё раз.',
     authFailed: 'Ошибка авторизации',
     favoriteFailed: 'Ошибка избранного',
     searchFailed: 'Ошибка поиска',
@@ -128,6 +131,13 @@ const TEXT = {
     footerBrand: 'AirParser',
     footerText: 'Поиск билетов, история запросов и избранное в одном интерфейсе.',
     footerCopy: 'Все права защищены.',
+    startupModalKicker: 'Быстрый старт',
+    startupModalTitle: 'Выбери город для горячих билетов Kupibilet',
+    startupModalText: 'После выбора города сразу запустим поиск временных горячих предложений Kupibilet в режиме "Хоть куда".',
+    startupModalCity: 'Город вылета',
+    startupModalPlaceholder: 'Например, Москва / Moscow',
+    startupModalAction: 'Показать горячие билеты',
+    startupModalLater: 'Позже',
   },
   en: {
     sourceBoth: 'All sources',
@@ -144,6 +154,7 @@ const TEXT = {
     exactNote: 'Price may differ by 300-400 RUB due to update timing, source commission, or fare changes at the moment of redirect.',
     removeFavorite: 'Remove favorite',
     addFavorite: 'Add to favorites',
+    loginToFavorite: 'Sign in for favorites',
     openTicket: 'Open ticket',
     account: 'Account',
     active: 'Active',
@@ -193,10 +204,11 @@ const TEXT = {
     priceFrom: 'Price from',
     priceTo: 'Price to',
     parserChoice: 'Which parser to use',
-    parserChoiceText: 'Only one source can be selected. If "Anywhere" is enabled, search uses Aviasales.',
+    parserChoiceText: 'Only one source can be selected. In "Anywhere" mode you can use regular Aviasales search or the separate Kupibilet temporary hot-price mode.',
     kupibiletHotOption: 'Kupibilet temporary hot price',
-    kupibiletHotOptionText: 'Shows a temporary discounted price with a countdown from Kupibilet hot offers. Works only for Kupibilet, an exact route, and strictly within the selected date or date range.',
+    kupibiletHotOptionText: 'Shows a temporary discounted price with a countdown from Kupibilet hot offers. Works in the Kupibilet "Anywhere" flow and searches strictly within the selected date or date range.',
     hotOfferBadge: 'Hot deal',
+    hotOfferExpiredBadge: 'Expired',
     oldPrice: 'Old price',
     hotOfferLiveNote: 'While the timer is active, the temporary discounted Kupibilet price is shown. After it ends the regular price returns.',
     hotOfferExpiredNote: 'The temporary discount has ended. The card automatically returned to the regular price.',
@@ -238,7 +250,8 @@ const TEXT = {
     sortCheapFirst: 'Cheapest first',
     noResults: 'No results yet. Start a search in the parser window above.',
     noResultsAfterSearch: 'No tickets were found for this query. Try changing the dates, source, or route.',
-    backendError: 'No backend connection. Start Django API on 127.0.0.1:8000.',
+    backendError: 'The request did not reach the backend. Make sure the Django API is running and try again.',
+    searchRequestError: 'The search request did not complete. Please try again.',
     authFailed: 'Authorization failed',
     favoriteFailed: 'Favorite update failed',
     searchFailed: 'Search error',
@@ -255,6 +268,13 @@ const TEXT = {
     footerBrand: 'AirParser',
     footerText: 'Ticket search, query history, and favorites in one interface.',
     footerCopy: 'All rights reserved.',
+    startupModalKicker: 'Quick start',
+    startupModalTitle: 'Choose a city for Kupibilet hot tickets',
+    startupModalText: 'After selecting a city, we will immediately launch the Kupibilet temporary hot-offer search in "Anywhere" mode.',
+    startupModalCity: 'Departure city',
+    startupModalPlaceholder: 'For example, Moscow',
+    startupModalAction: 'Show hot tickets',
+    startupModalLater: 'Later',
   },
 }
 
@@ -514,13 +534,26 @@ function isHotOfferActive(ticket, nowMs = Date.now()) {
   return Boolean(expiresAt && expiresAt > nowMs && originalPrice < Number.MAX_SAFE_INTEGER && originalPrice > currentPrice)
 }
 
+function isHotOfferExpired(ticket, nowMs = Date.now()) {
+  const expiresAt = parseTimestamp(ticket?.hot_expires_at)
+  const originalPrice = normalizePriceValue(ticket?.original_price)
+  const currentPrice = normalizePriceValue(ticket?.price)
+  return Boolean(expiresAt && expiresAt <= nowMs && originalPrice < Number.MAX_SAFE_INTEGER && originalPrice > currentPrice)
+}
+
 function getEffectiveTicketPrice(ticket, nowMs = Date.now()) {
   if (isHotOfferActive(ticket, nowMs)) {
     return normalizePriceValue(ticket?.price)
   }
+  if (isHotOfferExpired(ticket, nowMs)) {
+    const originalPrice = normalizePriceValue(ticket?.original_price)
+    if (originalPrice < Number.MAX_SAFE_INTEGER) return originalPrice
+  }
+  const currentPrice = normalizePriceValue(ticket?.price)
+  if (currentPrice < Number.MAX_SAFE_INTEGER) return currentPrice
   const originalPrice = normalizePriceValue(ticket?.original_price)
   if (originalPrice < Number.MAX_SAFE_INTEGER) return originalPrice
-  return normalizePriceValue(ticket?.price)
+  return currentPrice
 }
 
 function formatCountdown(value, lang = 'ru') {
@@ -646,7 +679,7 @@ function getCalendarGrid(monthDate) {
   })
 }
 
-function CalendarField({ name, value, onChange, lang, placeholder }) {
+function CalendarField({ name, value, onChange, lang, placeholder, disabled = false }) {
   const popupRef = useRef(null)
   const triggerRef = useRef(null)
   const [open, setOpen] = useState(false)
@@ -694,21 +727,33 @@ function CalendarField({ name, value, onChange, lang, placeholder }) {
   const months = CALENDAR_MONTHS[lang] || CALENDAR_MONTHS.ru
 
   function moveMonth(step) {
+    if (disabled) return
     setMonthView((current) => new Date(current.getFullYear(), current.getMonth() + step, 1))
   }
 
   function selectDate(dateValue) {
+    if (disabled) return
     onChange({ target: { name, value: formatInputDate(dateValue) } })
     setOpen(false)
   }
+
+  useEffect(() => {
+    if (disabled && open) {
+      setOpen(false)
+    }
+  }, [disabled, open])
 
   return (
     <div className="calendar-field">
       <button
         ref={triggerRef}
-        className={open ? 'calendar-trigger active' : 'calendar-trigger'}
+        className={[open ? 'calendar-trigger active' : 'calendar-trigger', disabled ? 'calendar-trigger-disabled' : ''].filter(Boolean).join(' ')}
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => {
+          if (disabled) return
+          setOpen((current) => !current)
+        }}
+        disabled={disabled}
       >
         <span>{value ? formatCalendarDisplay(value, lang) : placeholder}</span>
         <span className="calendar-trigger-icon">📅</span>
@@ -767,7 +812,7 @@ async function readJson(response) {
   return JSON.parse(rawText)
 }
 
-function TicketCard({ ticket, onToggleFavorite, favoritePending, lang, nowMs }) {
+function TicketCard({ ticket, onToggleFavorite, favoritePending, lang, nowMs, canFavorite = true }) {
   const t = TEXT[lang] || TEXT.ru
   const originLabel = translateLocationLabel(ticket.origin, ticket.origin_code, lang)
   const destinationLabel = translateLocationLabel(ticket.destination, ticket.destination_code, lang)
@@ -779,12 +824,13 @@ function TicketCard({ ticket, onToggleFavorite, favoritePending, lang, nowMs }) 
     : cityRoute
   const airlineName = formatAirlineName(ticket.airline, lang)
   const hotOfferActive = isHotOfferActive(ticket, nowMs)
+  const hotOfferExpired = isHotOfferExpired(ticket, nowMs)
   const displayPrice = getEffectiveTicketPrice(ticket, nowMs)
   const originalPrice = normalizePriceValue(ticket.original_price)
   const countdownValue = parseTimestamp(ticket.hot_expires_at) - nowMs
   const discountPercent = Number(ticket.hot_discount_percent || 0)
   const specialOfferLabel = String(ticket.special_offer_label || '').trim()
-  const passiveOfferActive = !hotOfferActive && Boolean(specialOfferLabel)
+  const passiveOfferActive = !hotOfferActive && !hotOfferExpired && Boolean(specialOfferLabel)
 
   return (
     <article className="result-card">
@@ -815,30 +861,42 @@ function TicketCard({ ticket, onToggleFavorite, favoritePending, lang, nowMs }) 
             <span>{`${t.hotOfferBadge}: -${discountPercent}% · ${formatCountdown(countdownValue, lang)}`}</span>
           </div>
         ) : null}
-        {passiveOfferActive ? (
-          <div className="hot-offer-chip passive content-layer">
-            <span className="hot-offer-chip-icon" aria-hidden="true">🔥</span>
-            <span>{specialOfferLabel}</span>
-          </div>
-        ) : null}
-        <p className="meta content-layer">{formatTransfers(ticket.transfers, lang)}</p>
-        <p className="meta content-layer">{t.departure}: {formatDateTime(ticket.departure_at, lang)}</p>
-        <div className="price-note content-layer">
-          {hotOfferActive
-            ? t.hotOfferLiveNote
-            : passiveOfferActive
-              ? `${specialOfferLabel}. ${lang === 'ru' ? 'Kupibilet не передал таймер для этой карточки.' : 'Kupibilet did not provide a timer for this card.'}`
-              : ticket.original_price
-              ? t.hotOfferExpiredNote
-              : ticket.estimated_price
-                ? t.estimatedNote
-                : t.exactNote}
+          {passiveOfferActive ? (
+            <div className="hot-offer-chip passive content-layer">
+              <span className="hot-offer-chip-icon" aria-hidden="true">🔥</span>
+              <span>{specialOfferLabel}</span>
+            </div>
+          ) : null}
+          {hotOfferExpired ? (
+            <div className="hot-offer-chip passive content-layer">
+              <span className="hot-offer-chip-icon" aria-hidden="true">⏳</span>
+              <span>{t.hotOfferExpiredBadge}</span>
+            </div>
+          ) : null}
+          <p className="meta content-layer">{formatTransfers(ticket.transfers, lang)}</p>
+          <p className="meta content-layer">{t.departure}: {formatDateTime(ticket.departure_at, lang)}</p>
+          <div className="price-note content-layer">
+            {hotOfferActive
+              ? t.hotOfferLiveNote
+              : hotOfferExpired
+                ? t.hotOfferExpiredNote
+              : passiveOfferActive
+                ? `${specialOfferLabel}. ${lang === 'ru' ? 'Kupibilet не передал таймер для этой карточки.' : 'Kupibilet did not provide a timer for this card.'}`
+                : ticket.estimated_price
+                  ? t.estimatedNote
+                  : t.exactNote}
         </div>
 
-      <div className="card-actions content-layer">
-        <button className={ticket.is_favorite ? 'favorite-button active' : 'favorite-button'} type="button" onClick={() => onToggleFavorite(ticket)} disabled={favoritePending}>
-          {favoritePending ? '...' : ticket.is_favorite ? t.removeFavorite : t.addFavorite}
-        </button>
+        <div className="card-actions content-layer">
+          <button
+            className={ticket.is_favorite ? 'favorite-button active' : 'favorite-button'}
+            type="button"
+            onClick={() => onToggleFavorite(ticket)}
+            disabled={favoritePending || !canFavorite}
+            title={!canFavorite ? t.loginToFavorite : undefined}
+          >
+            {favoritePending ? '...' : !canFavorite ? t.loginToFavorite : ticket.is_favorite ? t.removeFavorite : t.addFavorite}
+          </button>
         {ticket.link ? (
           <a className="ticket-link" href={ticket.link} target="_blank" rel="noreferrer">
             {t.openTicket}
@@ -847,6 +905,26 @@ function TicketCard({ ticket, onToggleFavorite, favoritePending, lang, nowMs }) 
       </div>
     </article>
   )
+}
+
+function mergeUniqueTickets(currentItems, incomingItems, favoriteItems) {
+  const favoriteKeys = new Set((favoriteItems || []).map((item) => item.ticket_key))
+  const byKey = new Map()
+
+  for (const item of currentItems || []) {
+    const key = String(item.ticket_key || item.link || `${item.source}-${item.origin_code || item.origin}-${item.destination_code || item.destination}-${item.departure_at}-${item.price}`)
+    byKey.set(key, item)
+  }
+
+  for (const item of incomingItems || []) {
+    const key = String(item.ticket_key || item.link || `${item.source}-${item.origin_code || item.origin}-${item.destination_code || item.destination}-${item.departure_at}-${item.price}`)
+    byKey.set(key, {
+      ...item,
+      is_favorite: favoriteKeys.has(item.ticket_key),
+    })
+  }
+
+  return Array.from(byKey.values())
 }
 
 function SearchHistoryCard({ item, lang, onRepeat, onRemove, onOpenTickets, pendingDelete, removing }) {
@@ -903,6 +981,7 @@ function SearchHistoryCard({ item, lang, onRepeat, onRemove, onOpenTickets, pend
 
 function App() {
   const accountCornerRef = useRef(null)
+  const searchRequestRef = useRef(0)
   const today = new Date()
   const defaultStart = addDays(today, 1)
   const defaultDate = formatInputDate(defaultStart)
@@ -943,10 +1022,14 @@ function App() {
   const [historySortCheapFirst, setHistorySortCheapFirst] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [backendAvailable, setBackendAvailable] = useState(false)
   const [serverTime, setServerTime] = useState('')
   const [scrollProgress, setScrollProgress] = useState(0)
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [hasSearched, setHasSearched] = useState(false)
+  const [startupModalOpen, setStartupModalOpen] = useState(false)
+  const [startupCity, setStartupCity] = useState(() => localStorage.getItem('airparser-startup-city') || 'Москва')
+  const startupPromptShownRef = useRef(false)
   const t = TEXT[lang] || TEXT.ru
   const sourceOptions = useMemo(
     () => [
@@ -957,6 +1040,12 @@ function App() {
     ],
     [t]
   )
+  const visibleSourceOptions = useMemo(() => {
+    if (form.routeMode === 'anywhere') {
+      return sourceOptions.filter((option) => option.value === 'aviasales')
+    }
+    return sourceOptions
+  }, [form.routeMode, sourceOptions])
   const airlineOptions = useMemo(
     () => [
       { value: '', label: t.allAirlines },
@@ -1001,6 +1090,7 @@ function App() {
 
     const response = await fetch('/api/favorites', { credentials: 'include' })
     const payload = await readJson(response)
+    setBackendAvailable(true)
     if (!response.ok) {
       throw new Error(payload.error || t.favoriteFailed)
     }
@@ -1015,6 +1105,7 @@ function App() {
 
     const response = await fetch('/api/history', { credentials: 'include' })
     const payload = await readJson(response)
+    setBackendAvailable(true)
     if (!response.ok) {
       throw new Error(payload.error || t.searchFailed)
     }
@@ -1029,6 +1120,7 @@ function App() {
       body: JSON.stringify({ id: historyId }),
     })
     const payload = await readJson(response)
+    setBackendAvailable(true)
     if (!response.ok) {
       throw new Error(payload.error || t.searchFailed)
     }
@@ -1042,6 +1134,7 @@ function App() {
       try {
         const response = await fetch('/api/auth/me', { credentials: 'include' })
         const payload = await readJson(response)
+        setBackendAvailable(true)
         if (!active) return
         const user = payload.authenticated ? payload.user : null
         setAuthUser(user)
@@ -1121,6 +1214,70 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (loading || tickets.length === 0) return undefined
+
+    const refreshCandidates = tickets
+      .filter((ticket) => String(ticket?.source || '').toLowerCase() === 'kupibilet' && ticket?.link)
+      .slice(0, 6)
+
+    if (refreshCandidates.length === 0) return undefined
+
+    let cancelled = false
+
+    async function refreshLivePrices() {
+      try {
+        const response = await fetch('/api/live-prices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            tickets: refreshCandidates.map((ticket) => ({
+              ticket_key: ticket.ticket_key,
+              source: ticket.source,
+              link: ticket.link,
+            })),
+          }),
+        })
+        const payload = await readJson(response)
+        if (!response.ok || cancelled) return
+        const updates = Array.isArray(payload.updates) ? payload.updates : []
+        if (updates.length === 0) return
+
+        const updatesByKey = new Map(
+          updates
+            .map((item) => {
+              const key = String(item.ticket_key || item.link || '')
+              return key ? [key, item] : null
+            })
+            .filter(Boolean)
+        )
+
+        setTickets((current) =>
+          current.map((ticket) => {
+            const key = String(ticket.ticket_key || ticket.link || '')
+            const next = updatesByKey.get(key)
+            if (!next) return ticket
+            return {
+              ...ticket,
+              price: next.price ?? ticket.price,
+              updated_at: next.updated_at || ticket.updated_at,
+            }
+          })
+        )
+      } catch {
+        // Keep the current snapshot when the live refresh fails.
+      }
+    }
+
+    refreshLivePrices()
+    const timer = window.setInterval(refreshLivePrices, 12000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [tickets, loading])
+
+  useEffect(() => {
     if (!authUser) {
       setFavorites([])
       setHistory([])
@@ -1135,12 +1292,35 @@ function App() {
     })
   }, [authUser])
 
+  useEffect(() => {
+    if (authLoading || startupPromptShownRef.current) return
+    startupPromptShownRef.current = true
+    setStartupCity((current) => current || form.from || 'Москва')
+    setStartupModalOpen(true)
+  }, [authLoading, form.from])
+
+  useEffect(() => {
+    if (!startupModalOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [startupModalOpen])
+
+  useEffect(() => {
+    if (form.routeMode === 'anywhere' && !form.kupibiletHotOffer && form.source !== 'aviasales') {
+      setForm((current) => ({ ...current, source: 'aviasales' }))
+    }
+  }, [form.routeMode, form.kupibiletHotOffer, form.source])
+
   function updateField(event) {
     const { name, value } = event.target
     setForm((current) => ({ ...current, [name]: value }))
   }
 
   function toggleSearchMode(nextMode) {
+    if (!authUser) return
     setForm((current) => ({
       ...current,
       searchMode: nextMode,
@@ -1148,6 +1328,7 @@ function App() {
   }
 
   function toggleRouteMode(nextMode) {
+    if (!authUser) return
     if (form.kupibiletHotOffer) return
     setForm((current) => ({
       ...current,
@@ -1161,7 +1342,9 @@ function App() {
   }
 
   function toggleSource(nextSource) {
+    if (!authUser) return
     if (form.kupibiletHotOffer && nextSource !== 'kupibilet') return
+    if (form.routeMode === 'anywhere' && nextSource !== 'aviasales') return
     setForm((current) => ({
       ...current,
       source: nextSource,
@@ -1170,10 +1353,11 @@ function App() {
   }
 
   function toggleKupibiletHotOffer() {
+    if (!authUser) return
     setForm((current) => ({
       ...current,
       kupibiletHotOffer: !current.kupibiletHotOffer,
-      source: 'kupibilet',
+      source: current.kupibiletHotOffer ? 'aviasales' : 'kupibilet',
       routeMode: current.kupibiletHotOffer ? current.routeMode : 'anywhere',
       to: '',
       airlineCode: '',
@@ -1208,6 +1392,7 @@ function App() {
       })
 
       const payload = await readJson(response)
+      setBackendAvailable(true)
       if (!response.ok) {
         throw new Error(payload.error || t.authFailed)
       }
@@ -1254,6 +1439,7 @@ function App() {
         body: JSON.stringify(favoritePayload),
       })
       const payload = await readJson(response)
+      setBackendAvailable(true)
       if (!response.ok) {
         throw new Error(payload.error || t.favoriteFailed)
       }
@@ -1277,6 +1463,8 @@ function App() {
   }
 
   async function runSearch(searchForm) {
+    const requestId = Date.now()
+    searchRequestRef.current = requestId
     setLoading(true)
     setError('')
     setTickets([])
@@ -1292,24 +1480,32 @@ function App() {
         : `${normalizeLocation(searchForm.from)} - ${normalizeLocation(searchForm.to)}`
       const dateValue = searchForm.searchMode === 'range' ? searchForm.rangeStart : searchForm.date
       const returnDateValue = searchForm.searchMode === 'range' ? searchForm.rangeEnd : null
-      const response = await fetch('/api/search', {
+      const useFastKupibiletPass = Boolean(searchForm.kupibiletHotOffer && (searchForm.routeMode === 'anywhere' || !searchForm.to.trim()))
+      const basePayload = {
+        route,
+        anywhere: searchForm.kupibiletHotOffer || searchForm.routeMode === 'anywhere',
+        date: dateValue || null,
+        return_date: returnDateValue || null,
+        price_from: searchForm.priceFrom || null,
+        price_to: searchForm.priceTo || null,
+        airline_code: searchForm.airlineCode || null,
+        source: searchForm.source,
+        kupibilet_hot_offer: Boolean(searchForm.kupibiletHotOffer),
+      }
+
+      const response = await fetch('/api/find-tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-          body: JSON.stringify({
-            route,
-            anywhere: searchForm.kupibiletHotOffer || searchForm.routeMode === 'anywhere',
-            date: dateValue || null,
-            return_date: returnDateValue || null,
-            price_from: searchForm.priceFrom || null,
-            price_to: searchForm.priceTo || null,
-            airline_code: searchForm.airlineCode || null,
-            source: searchForm.source,
-            kupibilet_hot_offer: Boolean(searchForm.kupibiletHotOffer),
-          }),
-        })
+        body: JSON.stringify({
+          ...basePayload,
+          deep_scan: !useFastKupibiletPass ? true : false,
+          limit: useFastKupibiletPass ? 10 : null,
+        }),
+      })
 
       const payload = await readJson(response)
+      setBackendAvailable(true)
       if (!response.ok) {
         throw new Error(payload.error || t.searchFailed)
       }
@@ -1329,6 +1525,32 @@ function App() {
       if (searchForm.kupibiletHotOffer && resolvedTickets.length === 0) {
         setError(t.noHotKupibiletResults)
       }
+
+      if (useFastKupibiletPass) {
+        ;(async () => {
+          try {
+            const deepResponse = await fetch('/api/find-tickets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                ...basePayload,
+                deep_scan: true,
+                limit: 40,
+              }),
+            })
+            const deepPayload = await readJson(deepResponse)
+            if (!deepResponse.ok || searchRequestRef.current !== requestId) return
+            const deepTickets = Array.isArray(deepPayload.tickets) ? deepPayload.tickets : []
+            if (deepTickets.length === 0) return
+            setTickets((current) => mergeUniqueTickets(current, deepTickets, favorites))
+            setServerTime((current) => deepPayload.server_time || current)
+          } catch {
+            // Keep the fast first pass if the background hydrate fails.
+          }
+        })()
+      }
+
       if (authUser) {
         loadHistory().catch(() => {})
       }
@@ -1337,7 +1559,7 @@ function App() {
       setServerTime('')
       const message = requestError instanceof Error ? requestError.message : t.searchFailed
       if (message.includes('Failed to fetch')) {
-        setError(t.backendError)
+        setError(backendAvailable ? t.searchRequestError : t.backendError)
       } else {
         setError(message)
       }
@@ -1357,6 +1579,7 @@ function App() {
         body: JSON.stringify({ id }),
       })
       const payload = await readJson(response)
+      setBackendAvailable(true)
         if (!response.ok) {
           throw new Error(payload.error || t.searchFailed)
         }
@@ -1395,6 +1618,7 @@ function App() {
         body: JSON.stringify({ id: item.id }),
       })
       const payload = await readJson(response)
+      setBackendAvailable(true)
       if (!response.ok) {
         throw new Error(payload.error || t.searchFailed)
       }
@@ -1415,34 +1639,94 @@ function App() {
     await runSearch(form)
   }
 
-  function handleRepeatSearch(item) {
-    const [fromPart, toPart] = String(item.route || '').split(/\s[-–—]+\s/)
-      const nextForm = {
-        from: fromPart || form.from,
-        to: item.anywhere ? '' : (toPart || form.to),
-        routeMode: item.anywhere ? 'anywhere' : 'destination',
-        searchMode: item.return_date ? 'range' : 'single',
-      date: item.date || form.date,
-      rangeStart: item.date || form.rangeStart,
-      rangeEnd: item.return_date || form.rangeEnd,
-      priceFrom: item.price_from != null ? String(item.price_from) : '',
-        priceTo: item.price_to != null ? String(item.price_to) : '',
-        airlineCode: item.airline_code || '',
-        source: item.source || form.source,
-        kupibiletHotOffer: false,
-      }
+  async function handleStartupHotSearch() {
+    const normalizedCity = startupCity.trim()
+    if (!normalizedCity) return
+    localStorage.setItem('airparser-startup-city', normalizedCity)
+    const nextForm = {
+      ...form,
+      from: normalizedCity,
+      to: '',
+      routeMode: 'anywhere',
+      searchMode: 'single',
+      date: '',
+      rangeStart: '',
+      rangeEnd: '',
+      source: 'kupibilet',
+      kupibiletHotOffer: true,
+      airlineCode: '',
+      priceFrom: '',
+      priceTo: '',
+    }
+    setStartupModalOpen(false)
     setForm((current) => ({
       ...current,
       ...nextForm,
     }))
+    await runSearch(nextForm)
+  }
+
+  function handleRepeatSearch(item) {
+    const restoreKupibiletHotOffer = Boolean(item.kupibilet_hot_offer || (item.source === 'kupibilet' && item.anywhere))
+      const [fromPart, toPart] = String(item.route || '').split(/\s[-–—]+\s/)
+        const nextForm = {
+          from: fromPart || form.from,
+          to: item.anywhere ? '' : (toPart || form.to),
+          routeMode: item.anywhere ? 'anywhere' : 'destination',
+        searchMode: item.return_date ? 'range' : 'single',
+        date: item.date || form.date,
+        rangeStart: item.date || form.rangeStart,
+        rangeEnd: item.return_date || form.rangeEnd,
+        priceFrom: item.price_from != null ? String(item.price_from) : '',
+          priceTo: item.price_to != null ? String(item.price_to) : '',
+          airlineCode: restoreKupibiletHotOffer ? '' : (item.airline_code || ''),
+          source: restoreKupibiletHotOffer ? 'kupibilet' : (item.source || form.source),
+          kupibiletHotOffer: restoreKupibiletHotOffer,
+        }
+      setForm((current) => ({
+        ...current,
+        ...nextForm,
+      }))
     runSearch(nextForm)
   }
 
   return (
-    <div className={`app-shell ${theme === 'dark' ? 'theme-dark' : ''}`}>
-      <div className="aurora aurora-left" />
-      <div className="aurora aurora-right" />
-      <div className="aurora aurora-bottom" />
+      <div className={`app-shell ${theme === 'dark' ? 'theme-dark' : ''}`}>
+        {startupModalOpen ? (
+          <div className="startup-modal-overlay" role="presentation">
+            <div className="startup-modal" role="dialog" aria-modal="true" aria-labelledby="startup-modal-title">
+              <span className="section-kicker">{t.startupModalKicker}</span>
+              <h2 id="startup-modal-title">{t.startupModalTitle}</h2>
+              <p>{t.startupModalText}</p>
+              <label className="field startup-modal-field">
+                <span>{t.startupModalCity}</span>
+                <input
+                  list="cis-city-suggestions"
+                  value={startupCity}
+                  onChange={(event) => setStartupCity(event.target.value)}
+                  placeholder={t.startupModalPlaceholder}
+                  autoFocus={authUser == null}
+                />
+              </label>
+              <div className="startup-modal-actions">
+                <button className="favorite-button" type="button" onClick={() => setStartupModalOpen(false)}>
+                  {t.startupModalLater}
+                </button>
+                <button
+                  className="favorite-button active"
+                  type="button"
+                  onClick={handleStartupHotSearch}
+                  disabled={loading || !startupCity.trim()}
+                >
+                  {loading ? t.pleaseWait : t.startupModalAction}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        <div className="aurora aurora-left" />
+        <div className="aurora aurora-right" />
+        <div className="aurora aurora-bottom" />
 
       <header
         className={scrollProgress > 0.02 ? 'topbar scrolled' : 'topbar'}
@@ -1616,12 +1900,13 @@ function App() {
               {!authUser ? <div className="status-box muted">{t.loginFirst}</div> : null}
             </div>
 
-            <div className="book-side book-form-wrap">
-              <form className="search-form" onSubmit={handleSubmit}>
-                <label className="field wide">
-                  <span>{t.from}</span>
-                  <input name="from" list="cis-city-suggestions" value={form.from} onChange={updateField} placeholder={t.fromPlaceholder} />
-                </label>
+              <div className="book-side book-form-wrap">
+                <form className="search-form" onSubmit={handleSubmit}>
+                  <fieldset className="search-form-fieldset" disabled={!authUser}>
+                  <label className="field wide">
+                    <span>{t.from}</span>
+                    <input name="from" list="cis-city-suggestions" value={form.from} onChange={updateField} placeholder={t.fromPlaceholder} />
+                  </label>
 
                 <label className="field wide">
                   <span>{t.to}</span>
@@ -1673,6 +1958,7 @@ function App() {
                           onChange={updateField}
                           lang={lang}
                           placeholder={t.noDate}
+                          disabled={!authUser}
                         />
                       </label>
                     ) : (
@@ -1685,6 +1971,7 @@ function App() {
                             onChange={updateField}
                             lang={lang}
                             placeholder={t.noDate}
+                            disabled={!authUser}
                           />
                         </label>
 
@@ -1696,6 +1983,7 @@ function App() {
                             onChange={updateField}
                             lang={lang}
                             placeholder={t.noDate}
+                            disabled={!authUser}
                           />
                         </label>
                       </div>
@@ -1707,11 +1995,11 @@ function App() {
                     <p className="parser-choice-description">{t.calendarText}</p>
                     <div className="date-mode-checks">
                         <label className={form.searchMode === 'single' ? 'parser-check active' : 'parser-check'}>
-                          <input type="checkbox" checked={form.searchMode === 'single'} onChange={() => toggleSearchMode('single')} />
+                          <input type="checkbox" checked={form.searchMode === 'single'} onChange={() => toggleSearchMode('single')} disabled={!authUser} />
                           <span>{t.oneDay}</span>
                         </label>
                         <label className={form.searchMode === 'range' ? 'parser-check active' : 'parser-check'}>
-                          <input type="checkbox" checked={form.searchMode === 'range'} onChange={() => toggleSearchMode('range')} />
+                          <input type="checkbox" checked={form.searchMode === 'range'} onChange={() => toggleSearchMode('range')} disabled={!authUser} />
                           <span>{t.dateRange}</span>
                         </label>
                     </div>
@@ -1751,7 +2039,7 @@ function App() {
                     <span className="parser-choice-label">{t.parserChoice}</span>
                     <p className="parser-choice-description">{t.parserChoiceText}</p>
                     <div className="parser-choice-grid">
-                      {sourceOptions.map((option) => (
+                      {visibleSourceOptions.map((option) => (
                       <label key={option.value} className={form.source === option.value ? 'parser-check active' : 'parser-check'}>
                           <input
                             type="checkbox"
@@ -1760,14 +2048,14 @@ function App() {
                             disabled={
                               form.kupibiletHotOffer
                                 ? option.value !== 'kupibilet'
-                                : form.routeMode === 'anywhere' && option.value !== 'aviasales'
+                                : false
                             }
                           />
                           <span>{option.label}</span>
                         </label>
                       ))}
                     </div>
-                    {form.source === 'kupibilet' ? (
+                    {(form.source === 'kupibilet' || form.routeMode === 'anywhere') ? (
                       <label className={form.kupibiletHotOffer ? 'parser-check active parser-special-option' : 'parser-check parser-special-option'}>
                         <input
                           type="checkbox"
@@ -1777,11 +2065,12 @@ function App() {
                         <span>{t.kupibiletHotOption}</span>
                         <small>{t.kupibiletHotOptionText}</small>
                       </label>
-                    ) : null}
-                  </div>
+                      ) : null}
+                    </div>
+                  </fieldset>
 
-                <button className="search-button" type="submit" disabled={!canSearch || loading}>
-                  {loading
+                  <button className="search-button" type="submit" disabled={!canSearch || loading}>
+                    {loading
                     ? form.searchMode === 'range'
                       ? t.searchingRange
                       : t.searchingDate
@@ -1843,14 +2132,15 @@ function App() {
                 </div>
                 <div className="results-grid">
                     {displayedHistoryTickets.map((ticket, index) => (
-                      <TicketCard
-                        key={buildRenderTicketKey(ticket, index, 'history-ticket')}
-                        ticket={ticket}
-                        onToggleFavorite={handleToggleFavorite}
-                        favoritePending={favoritePendingKey === ticket.ticket_key}
-                        lang={lang}
-                        nowMs={nowTick}
-                      />
+                        <TicketCard
+                          key={buildRenderTicketKey(ticket, index, 'history-ticket')}
+                          ticket={ticket}
+                          onToggleFavorite={handleToggleFavorite}
+                          favoritePending={favoritePendingKey === ticket.ticket_key}
+                          lang={lang}
+                          nowMs={nowTick}
+                          canFavorite={Boolean(authUser)}
+                        />
                     ))}
                 </div>
               </div>
@@ -1870,9 +2160,9 @@ function App() {
           {authUser && favorites.length === 0 ? <div className="status-box muted">{t.noFavorites}</div> : null}
 
             <div className="results-grid">
-              {favorites.map((ticket, index) => (
-                <TicketCard key={buildRenderTicketKey(ticket, index, 'favorite-ticket')} ticket={{ ...ticket, is_favorite: true }} onToggleFavorite={handleToggleFavorite} favoritePending={favoritePendingKey === ticket.ticket_key} lang={lang} nowMs={nowTick} />
-              ))}
+                {favorites.map((ticket, index) => (
+                  <TicketCard key={buildRenderTicketKey(ticket, index, 'favorite-ticket')} ticket={{ ...ticket, is_favorite: true }} onToggleFavorite={handleToggleFavorite} favoritePending={favoritePendingKey === ticket.ticket_key} lang={lang} nowMs={nowTick} canFavorite={Boolean(authUser)} />
+                ))}
             </div>
         </section>
 
@@ -1935,9 +2225,9 @@ function App() {
             ) : null}
 
             <div className="results-grid">
-              {displayedTickets.map((ticket, index) => (
-                <TicketCard key={buildRenderTicketKey(ticket, index, 'search-ticket')} ticket={ticket} onToggleFavorite={handleToggleFavorite} favoritePending={favoritePendingKey === ticket.ticket_key} lang={lang} nowMs={nowTick} />
-              ))}
+                {displayedTickets.map((ticket, index) => (
+                 <TicketCard key={buildRenderTicketKey(ticket, index, 'search-ticket')} ticket={ticket} onToggleFavorite={handleToggleFavorite} favoritePending={favoritePendingKey === ticket.ticket_key} lang={lang} nowMs={nowTick} canFavorite={Boolean(authUser)} />
+                ))}
             </div>
         </section>
       </main>

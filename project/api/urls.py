@@ -12,12 +12,14 @@ from .views import (
     history_list,
     history_remove,
     history_tickets,
+    live_prices,
     search,
 )
 
 urlpatterns = [
     path('health', health, name='api-health'),
     path('search', search, name='api-search'),
+    path('find-tickets', search, name='api-find-tickets'),
     path('auth/me', auth_me, name='api-auth-me'),
     path('auth/register', auth_register, name='api-auth-register'),
     path('auth/login', auth_login, name='api-auth-login'),
@@ -28,4 +30,5 @@ urlpatterns = [
     path('history', history_list, name='api-history-list'),
     path('history/tickets', history_tickets, name='api-history-tickets'),
     path('history/remove', history_remove, name='api-history-remove'),
+    path('live-prices', live_prices, name='api-live-prices'),
 ]

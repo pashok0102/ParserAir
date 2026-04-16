@@ -43,7 +43,7 @@ PARSER_EXECUTORS = {
     'kupibilet': ThreadPoolExecutor(max_workers=KUPIBILET_POOL_WORKERS, thread_name_prefix='kupibilet'),
 }
 SEARCH_CACHE_TTL_SECONDS = 180
-SEARCH_CACHE_VERSION = "v5-kupibilet-sales-specials-stable-cards"
+SEARCH_CACHE_VERSION = "v22-kupibilet-moscow-city-and-old-price"
 SEARCH_CACHE: dict[tuple, tuple[float, list[Ticket]]] = {}
 SEARCH_CACHE_LOCK = Lock()
 
@@ -94,6 +94,7 @@ def build_search_cache_key(
     return_date: date | None,
     anywhere: bool,
     kupibilet_hot_offer: bool = False,
+    deep_scan: bool = True,
 ):
     return (
         SEARCH_CACHE_VERSION,
@@ -104,6 +105,7 @@ def build_search_cache_key(
         return_date.isoformat() if return_date else None,
         anywhere,
         kupibilet_hot_offer,
+        deep_scan,
     )
 
 
@@ -198,6 +200,7 @@ def serialize_favorite(favorite: FavoriteTicket) -> dict:
 
 
 def serialize_search_history(item: SearchHistory) -> dict:
+    kupibilet_hot_offer = item.source == 'kupibilet' and item.anywhere
     return {
         'id': item.id,
         'route': item.route,
@@ -208,11 +211,49 @@ def serialize_search_history(item: SearchHistory) -> dict:
         'price_to': item.price_to,
         'airline_code': item.airline_code,
         'source': item.source,
+        'kupibilet_hot_offer': kupibilet_hot_offer,
         'result_count': item.result_count,
         'saved_to': item.saved_to,
         'server_time': item.server_time,
         'created_at': item.created_at.isoformat(),
     }
+
+
+@csrf_exempt
+@require_POST
+def live_prices(request):
+    payload = parse_json_body(request)
+    if payload is None:
+        return JsonResponse({'error': 'Некорректный JSON'}, status=400)
+
+    raw_tickets = payload.get('tickets')
+    if not isinstance(raw_tickets, list):
+        return JsonResponse({'updates': []})
+
+    updates: list[dict] = []
+    for raw_ticket in raw_tickets[:8]:
+        if not isinstance(raw_ticket, dict):
+            continue
+
+        source = str(raw_ticket.get('source') or '').strip().lower()
+        link = str(raw_ticket.get('link') or '').strip()
+        if source != 'kupibilet' or not link:
+            continue
+
+        snapshot = kupibilet_client.get_live_ticket_snapshot(link)
+        if not snapshot:
+            continue
+
+        updates.append(
+            {
+                'ticket_key': str(raw_ticket.get('ticket_key') or ''),
+                'link': snapshot['link'],
+                'price': snapshot['price'],
+                'updated_at': snapshot['updated_at'],
+            }
+        )
+
+    return JsonResponse({'updates': updates})
 
 
 def get_tickets_by_source(
@@ -224,6 +265,7 @@ def get_tickets_by_source(
     anywhere: bool = False,
     anywhere_refine_exact: bool = True,
     kupibilet_hot_offer: bool = False,
+    deep_scan: bool = True,
 ) -> list[Ticket]:
     request_limit = 100 if limit is None else max(min(limit, 200), 100)
 
@@ -236,6 +278,7 @@ def get_tickets_by_source(
                 limit=limit or request_limit,
                 departure_date=departure_date,
                 hot_offer=True,
+                deep_scan=deep_scan,
             ),
         )
 
@@ -355,9 +398,19 @@ def get_tickets_for_period(
     return_date: date | None,
     anywhere: bool = False,
     kupibilet_hot_offer: bool = False,
+    deep_scan: bool = True,
 ) -> list[Ticket]:
     if not departure_date:
-        return get_tickets_by_source(source_name, route, limit, None, None, anywhere=anywhere, kupibilet_hot_offer=kupibilet_hot_offer)
+        return get_tickets_by_source(
+            source_name,
+            route,
+            limit,
+            None,
+            None,
+            anywhere=anywhere,
+            kupibilet_hot_offer=kupibilet_hot_offer,
+            deep_scan=deep_scan,
+        )
 
     if not return_date or return_date <= departure_date:
         return get_tickets_by_source(
@@ -368,6 +421,7 @@ def get_tickets_for_period(
             None,
             anywhere=anywhere,
             kupibilet_hot_offer=kupibilet_hot_offer,
+            deep_scan=deep_scan,
         )
 
     days_count = (return_date - departure_date).days + 1
@@ -558,6 +612,7 @@ def get_tickets_for_period(
                 anywhere=anywhere,
                 anywhere_refine_exact=anywhere_refine_exact,
                 kupibilet_hot_offer=kupibilet_hot_offer,
+                deep_scan=deep_scan,
             ),
         )
 
@@ -602,6 +657,7 @@ def get_tickets_with_nearest_fallback(
     return_date: date | None,
     anywhere: bool = False,
     kupibilet_hot_offer: bool = False,
+    deep_scan: bool = True,
 ) -> list[Ticket]:
     cache_key = build_search_cache_key(
         source_name=source_name,
@@ -611,6 +667,7 @@ def get_tickets_with_nearest_fallback(
         return_date=return_date,
         anywhere=anywhere,
         kupibilet_hot_offer=kupibilet_hot_offer,
+        deep_scan=deep_scan,
     )
     cached_tickets = get_cached_search_result(cache_key)
     if cached_tickets is not None:
@@ -624,6 +681,7 @@ def get_tickets_with_nearest_fallback(
         return_date=return_date,
         anywhere=anywhere,
         kupibilet_hot_offer=kupibilet_hot_offer,
+        deep_scan=deep_scan,
     )
     if tickets or anywhere or not departure_date or return_date or kupibilet_hot_offer:
         set_cached_search_result(cache_key, tickets)
@@ -644,6 +702,7 @@ def get_tickets_with_nearest_fallback(
             return_date=None,
             anywhere=False,
             kupibilet_hot_offer=kupibilet_hot_offer,
+            deep_scan=deep_scan,
         )
         if fallback_tickets:
             set_cached_search_result(cache_key, fallback_tickets)
@@ -958,9 +1017,6 @@ def favorites_remove(request):
 @csrf_exempt
 @require_POST
 def search(request):
-    if not request.user.is_authenticated:
-        return JsonResponse({'error': 'Нужна авторизация'}, status=401)
-
     payload = parse_json_body(request)
     if payload is None:
         return JsonResponse({'error': 'Некорректный JSON'}, status=400)
@@ -971,6 +1027,7 @@ def search(request):
 
     anywhere = bool(payload.get('anywhere'))
     kupibilet_hot_offer = bool(payload.get('kupibilet_hot_offer'))
+    deep_scan = bool(payload.get('deep_scan', True))
 
     source = str(payload.get('source', 'both')).strip().lower() or 'both'
     if source not in {'aviasales', 'tutu', 'kupibilet', 'both'}:
@@ -1006,7 +1063,7 @@ def search(request):
     if kupibilet_hot_offer:
         if source != 'kupibilet':
             return JsonResponse({'error': 'Горячая временная цена доступна только для Kupibilet'}, status=400)
-        if not departure_date:
+        if not departure_date and not anywhere:
             return JsonResponse({'error': 'Для горячей временной цены нужна дата вылета'}, status=400)
 
     fetch_limit = limit
@@ -1022,6 +1079,7 @@ def search(request):
             return_date=return_date,
             anywhere=anywhere,
             kupibilet_hot_offer=kupibilet_hot_offer,
+            deep_scan=deep_scan,
         )
         tickets = filter_tickets_by_price(tickets, price_from, price_to)
         tickets = filter_tickets_by_airline(tickets, airline_code)
@@ -1032,13 +1090,17 @@ def search(request):
     except Exception as exc:
         return JsonResponse({'error': str(exc)}, status=400)
 
-    favorite_keys = set(FavoriteTicket.objects.filter(user=request.user).values_list('ticket_key', flat=True))
+    favorite_keys = (
+        set(FavoriteTicket.objects.filter(user=request.user).values_list('ticket_key', flat=True))
+        if request.user.is_authenticated
+        else set()
+    )
     server_time = datetime.now(timezone.utc).isoformat()
     tickets_payload = tickets_to_dicts(tickets, favorite_keys=favorite_keys)
 
     saved_to = ''
     history_entry = None
-    if tickets_payload:
+    if tickets_payload and request.user.is_authenticated:
         saved_to = save_search_results(
             user_id=request.user.id,
             search_payload={

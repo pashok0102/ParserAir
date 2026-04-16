@@ -15,6 +15,31 @@ def _collect_prices(payload: str, patterns: Iterable[str], price_min: int, price
     return candidates
 
 
+def _normalize_kupibilet_card_text(value: str) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not text:
+        return ""
+    text = re.sub(r"(?:скидка\s*)?[−-]?\s*\d{1,2}%\s*[∙·•]?\s*\d{1,2}:\d{2}:\d{2}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b\d{1,2}:\d{2}:\d{2}\b", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _build_kupibilet_card_fingerprint(card: dict) -> str:
+    link_text = re.sub(r"\s+", "", str(card.get("link_text") or "").strip())
+    current_price_text = _normalize_kupibilet_card_text(str(card.get("current_price_text") or ""))
+    original_price_text = _normalize_kupibilet_card_text(str(card.get("original_price_text") or ""))
+    tag_text = _normalize_kupibilet_card_text(str(card.get("tag_text") or ""))
+    body_text = _normalize_kupibilet_card_text(str(card.get("text") or ""))
+    json_text = _normalize_kupibilet_card_text(str(card.get("json") or ""))
+
+    body_signature = body_text or json_text
+    if link_text and body_signature:
+        return f"{link_text}::{current_price_text}::{original_price_text}::{body_signature}"
+    if body_signature:
+        return f"{current_price_text}::{original_price_text}::{body_signature}"
+    return link_text
+
+
 def extract_rendered_price(
     url: str,
     patterns: Iterable[str],
@@ -306,6 +331,7 @@ def extract_rendered_kupibilet_special_cards(
     url: str,
     limit: int = 30,
     timeout_ms: int = 45000,
+    deep_scan: bool = True,
 ) -> list[dict]:
     try:
         from playwright.sync_api import sync_playwright
@@ -327,7 +353,7 @@ def extract_rendered_kupibilet_special_cards(
             cards_locator = page.locator(".TicketCard_card__yyKN7")
             stable_rounds = 0
             last_count = -1
-            for _ in range(12):
+            for _ in range(4):
                 current_count = cards_locator.count()
                 if current_count > 0 and current_count == last_count:
                     stable_rounds += 1
@@ -336,12 +362,26 @@ def extract_rendered_kupibilet_special_cards(
                     last_count = current_count
                 if current_count > 0 and stable_rounds >= 2:
                     break
-                page.wait_for_timeout(1200)
+                page.wait_for_timeout(220)
 
             all_cards: list[dict] = []
             seen_keys: set[str] = set()
             stagnant_rounds = 0
             last_scroll_y = -1
+
+            def wait_cards_stable() -> None:
+                stable_rounds = 0
+                last_count = -1
+                for _ in range(3):
+                    current_count = cards_locator.count()
+                    if current_count > 0 and current_count == last_count:
+                        stable_rounds += 1
+                    else:
+                        stable_rounds = 0
+                        last_count = current_count
+                    if current_count > 0 and stable_rounds >= 2:
+                        break
+                    page.wait_for_timeout(160)
 
             def collect_visible_cards() -> int:
                 added = 0
@@ -353,6 +393,12 @@ def extract_rendered_kupibilet_special_cards(
                     except Exception:
                         text = ""
 
+                    raw_text = ""
+                    try:
+                        raw_text = card_node.text_content(timeout=1800) or ""
+                    except Exception:
+                        raw_text = ""
+
                     json_text = ""
                     script_node = card_node.locator("script").first
                     try:
@@ -362,15 +408,23 @@ def extract_rendered_kupibilet_special_cards(
                         json_text = ""
 
                     tag_text = ""
-                    tag_node = card_node.locator(".HotTicketCard_tagMainPage__tRwae, .LoopholeCard_tag__09_OF").first
+                    tag_node = card_node.locator(
+                        ".HotTicketCard_tagMainPage__tRwae, .LoopholeCard_tag__09_OF, [class*='HotTicketCard_tag'], [class*='LoopholeCard_tag'], [class*='tagMainPage'], [class*='tag__']"
+                    ).first
                     try:
                         if tag_node.count() > 0:
                             tag_text = tag_node.inner_text(timeout=1200) or ""
                     except Exception:
                         tag_text = ""
+                    if not tag_text:
+                        try:
+                            if tag_node.count() > 0:
+                                tag_text = tag_node.text_content(timeout=1200) or ""
+                        except Exception:
+                            tag_text = ""
 
                     original_price_text = ""
-                    old_price_node = card_node.locator(".TicketCard_originalPrice__J5SU8").first
+                    old_price_node = card_node.locator("[class*='TicketCard_originalPrice__']").first
                     try:
                         if old_price_node.count() > 0:
                             original_price_text = old_price_node.inner_text(timeout=1200) or ""
@@ -378,21 +432,46 @@ def extract_rendered_kupibilet_special_cards(
                         original_price_text = ""
 
                     current_price_text = ""
-                    price_node = card_node.locator(".TicketCard_price__f9Vqg").first
+                    price_node = card_node.locator("[class*='TicketCard_price__']").first
                     try:
                         if price_node.count() > 0:
                             current_price_text = price_node.inner_text(timeout=1200) or ""
                     except Exception:
                         current_price_text = ""
 
+                    link_text = ""
+                    link_node = card_node.locator(
+                        "a[href*='/mbooking/step'], a[href*='/booking/step'], [href*='/mbooking/step'], [href*='/booking/step']"
+                    ).first
+                    try:
+                        if link_node.count() > 0:
+                            link_text = link_node.get_attribute("href", timeout=1200) or ""
+                    except Exception:
+                        link_text = ""
+
+                    if not link_text:
+                        try:
+                            link_text = card_node.evaluate(
+                                """
+                                (node) => {
+                                  const candidate = node.closest('a[href]') || node.querySelector('a[href], [href]');
+                                  return candidate ? String(candidate.getAttribute('href') || '') : '';
+                                }
+                                """
+                            ) or ""
+                        except Exception:
+                            link_text = ""
+
                     card = {
                         "text": text,
+                        "raw_text": raw_text,
                         "json": json_text,
                         "tag_text": tag_text,
                         "original_price_text": original_price_text,
                         "current_price_text": current_price_text,
+                        "link_text": link_text,
                     }
-                    fingerprint = f"{card.get('json') or ''}::{card.get('text') or ''}"
+                    fingerprint = _build_kupibilet_card_fingerprint(card)
                     if not fingerprint or fingerprint in seen_keys:
                         continue
                     seen_keys.add(fingerprint)
@@ -402,27 +481,116 @@ def extract_rendered_kupibilet_special_cards(
                         break
                 return added
 
-            for _ in range(40):
-                added_this_round = collect_visible_cards()
+            def collect_all_scrolled_cards() -> None:
+                nonlocal stagnant_rounds, last_scroll_y
+                stagnant_rounds = 0
+                last_scroll_y = -1
+                for _ in range(4):
+                    added_this_round = collect_visible_cards()
 
+                    if len(all_cards) >= max(1, limit):
+                        break
+
+                    if added_this_round == 0:
+                        stagnant_rounds += 1
+                    else:
+                        stagnant_rounds = 0
+
+                    current_scroll_y = page.evaluate("() => window.scrollY")
+                    if stagnant_rounds >= 3 and current_scroll_y == last_scroll_y:
+                        break
+
+                    last_scroll_y = current_scroll_y
+                    try:
+                        page.mouse.wheel(0, 2600)
+                        page.wait_for_timeout(180)
+                    except Exception:
+                        break
+
+            top_category_texts = page.evaluate(
+                """
+                () => {
+                  const nodes = Array.from(document.querySelectorAll('button, [role="button"]'));
+                  const values = [];
+                  for (const node of nodes) {
+                    const cls = String(node.className || '');
+                    const text = String(node.innerText || node.textContent || '').trim();
+                    if (!text) {
+                      continue;
+                    }
+                    if (cls.includes('_tag_') && !values.includes(text)) {
+                      values.push(text);
+                    }
+                  }
+                  return values;
+                }
+                """
+            ) or []
+
+            if not deep_scan:
+                collect_all_scrolled_cards()
+                cards = all_cards[: max(1, limit)]
+                browser.close()
+                return cards or []
+
+            def collect_carousel_cards() -> None:
+                for _ in range(2):
+                    carousel_buttons = page.locator("button[class*='_rightBtn_'], [role='button'][class*='_rightBtn_']")
+                    try:
+                        carousel_count = carousel_buttons.count()
+                    except Exception:
+                        carousel_count = 0
+
+                    if carousel_count <= 0:
+                        break
+
+                    moved_any = False
+                    for button_index in range(carousel_count):
+                        if len(all_cards) >= max(1, limit):
+                            return
+                        for _ in range(6):
+                            if len(all_cards) >= max(1, limit):
+                                return
+                            try:
+                                next_button = carousel_buttons.nth(button_index)
+                                if next_button.count() == 0 or next_button.is_disabled():
+                                    break
+                                next_button.scroll_into_view_if_needed(timeout=1500)
+                                next_button.click(timeout=2500)
+                                moved_any = True
+                                page.wait_for_timeout(140)
+                                wait_cards_stable()
+                                before_count = len(all_cards)
+                                collect_all_scrolled_cards()
+                                if len(all_cards) == before_count:
+                                    break
+                            except Exception:
+                                break
+                    if not moved_any:
+                        break
+
+            collect_all_scrolled_cards()
+            collect_carousel_cards()
+
+            for category_text in top_category_texts:
                 if len(all_cards) >= max(1, limit):
                     break
-
-                if added_this_round == 0:
-                    stagnant_rounds += 1
-                else:
-                    stagnant_rounds = 0
-
-                current_scroll_y = page.evaluate("() => window.scrollY")
-                if stagnant_rounds >= 5 and current_scroll_y == last_scroll_y:
-                    break
-
-                last_scroll_y = current_scroll_y
                 try:
-                    page.mouse.wheel(0, 2200)
-                    page.wait_for_timeout(1800)
+                    page.evaluate("() => window.scrollTo(0, 0)")
+                    page.wait_for_timeout(80)
+                    category_button = page.locator("button").filter(has_text=str(category_text)).first
+                    if category_button.count() == 0:
+                        category_button = page.locator("[role='button']").filter(has_text=str(category_text)).first
+                    if category_button.count() == 0:
+                        continue
+                    category_button.scroll_into_view_if_needed(timeout=1500)
+                    category_button.click(timeout=3000)
+                    page.wait_for_timeout(180)
+                    wait_cards_stable()
+                    collect_all_scrolled_cards()
+                    collect_carousel_cards()
                 except Exception:
-                    break
+                    continue
 
             cards = all_cards[: max(1, limit)]
             browser.close()
