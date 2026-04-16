@@ -240,7 +240,10 @@ def live_prices(request):
         if source != 'kupibilet' or not link:
             continue
 
-        snapshot = kupibilet_client.get_live_ticket_snapshot(link)
+        try:
+            snapshot = kupibilet_client.get_live_ticket_snapshot(link)
+        except Exception:
+            continue
         if not snapshot:
             continue
 

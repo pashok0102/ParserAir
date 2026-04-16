@@ -118,7 +118,8 @@ def extract_rendered_attr_price(
     except Exception:
         return None
 
-    numeric = int(re.sub(r"\D", "", raw_value)) if raw_value else 0
+    digits = re.sub(r"\D", "", raw_value or "")
+    numeric = int(digits) if digits else 0
     if price_min <= numeric <= price_max:
         return numeric
     return None
@@ -158,7 +159,11 @@ def extract_rendered_text_price(
     except Exception:
         return None
 
-    numeric = int(re.sub(r"\D", "", raw_value)) if raw_value else 0
+    digits = re.sub(r"\D", "", raw_value or "")
+    if not digits:
+        return None
+
+    numeric = int(digits)
     if price_min <= numeric <= price_max:
         return numeric
     return None
