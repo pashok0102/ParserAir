@@ -190,12 +190,12 @@ def serialize_favorite(favorite: FavoriteTicket) -> dict:
         'source': favorite.source,
         'updated_at': favorite.updated_at,
         'is_favorite': True,
-        'estimated_price': False,
-        'baggage_info': '',
-        'original_price': None,
-        'hot_discount_percent': None,
-        'hot_expires_at': '',
-        'special_offer_label': '',
+        'estimated_price': bool(favorite.estimated_price),
+        'baggage_info': str(favorite.baggage_info or ''),
+        'original_price': favorite.original_price,
+        'hot_discount_percent': favorite.hot_discount_percent,
+        'hot_expires_at': str(favorite.hot_expires_at or ''),
+        'special_offer_label': str(favorite.special_offer_label or ''),
     }
 
 
@@ -965,6 +965,8 @@ def favorites_add(request):
     try:
         price = int(payload.get('price', 0))
         transfers = int(payload.get('transfers', 0))
+        original_price = parse_optional_int(payload.get('original_price'))
+        hot_discount_percent = parse_optional_int(payload.get('hot_discount_percent'))
     except (TypeError, ValueError):
         return JsonResponse({'error': 'Некорректные данные билета'}, status=400)
 
@@ -993,6 +995,12 @@ def favorites_add(request):
             'transfers': transfers,
             'link': link,
             'updated_at': str(payload.get('updated_at', '')).strip(),
+            'original_price': original_price,
+            'hot_discount_percent': hot_discount_percent,
+            'hot_expires_at': str(payload.get('hot_expires_at', '') or '').strip(),
+            'special_offer_label': str(payload.get('special_offer_label', '') or '').strip(),
+            'estimated_price': bool(payload.get('estimated_price', False)),
+            'baggage_info': str(payload.get('baggage_info', '') or '').strip(),
         },
     )
 

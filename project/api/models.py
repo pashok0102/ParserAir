@@ -14,6 +14,12 @@ class FavoriteTicket(models.Model):
     transfers = models.IntegerField(default=0)
     link = models.TextField(blank=True)
     updated_at = models.CharField(max_length=64, blank=True)
+    original_price = models.PositiveIntegerField(null=True, blank=True)
+    hot_discount_percent = models.IntegerField(null=True, blank=True)
+    hot_expires_at = models.CharField(max_length=64, blank=True)
+    special_offer_label = models.CharField(max_length=128, blank=True)
+    estimated_price = models.BooleanField(default=False)
+    baggage_info = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
