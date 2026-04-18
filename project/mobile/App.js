@@ -1,10 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useState } from 'react';
+import React, { Component, createElement, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Linking,
-  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -16,644 +12,1706 @@ import {
 } from 'react-native';
 
 import { api } from './src/api';
-import { API_BASE_URL, APP_TITLE } from './src/config';
-import { buildRoute, formatDateTime, formatPrice, sourceLabel, transfersLabel } from './src/helpers';
-import { themes } from './src/theme';
+import { APP_TITLE, themes } from './src/config';
 
-const tabs = ['search', 'results', 'history', 'favorites', 'account'];
+const fallbackTheme = themes.light;
 
-const tabLabels = {
-  search: 'Поиск',
-  results: 'Результаты',
-  history: 'История',
-  favorites: 'Избранное',
-  account: 'Аккаунт',
+const TEXT = {
+  title: APP_TITLE,
+  subtitle: 'Быстрый старт, результаты, избранное и история в одном экране.',
+  tabs: {
+    search: 'Поиск',
+    results: 'Результаты',
+    favorites: 'Избранное',
+    history: 'История',
+    account: 'Аккаунт',
+  },
+  popup: {
+    badge: 'Быстрый старт',
+    title: 'Горячая временная цена Kupibilet',
+    body:
+      'Это отдельный сценарий поиска, как на веб-сайте: можно ввести город и сразу получить горячие билеты Kupibilet. Без аккаунта работает только это окно.',
+    city: 'Город вылета',
+    cityPlaceholder: 'Например, Москва',
+    skip: 'Позже',
+    submit: 'Показать горячие билеты',
+  },
+  search: {
+    guestNote: 'Без аккаунта основной парсер заблокирован. Доступен только быстрый старт через всплывающее окно.',
+    from: 'Откуда',
+    fromPlaceholder: 'Например, Санкт-Петербург',
+    to: 'Куда',
+    toPlaceholder: 'Например, Сочи',
+    routeTitle: 'Логика направления',
+    exactRoute: 'Точный маршрут',
+    anywhere: 'Хоть куда',
+    dateTitle: 'Дата вылета',
+    singleDay: 'Один день',
+    range: 'Диапазон дат',
+    date: 'Дата',
+    dateFrom: 'Дата с',
+    dateTo: 'Дата по',
+    sourceTitle: 'Источник',
+    sourceBoth: 'Все источники',
+    sourceAviasales: 'Aviasales',
+    sourceTutu: 'Tutu',
+    sourceKupibilet: 'Kupibilet',
+    hotTitle: 'Горячая временная цена Kupibilet',
+    hotDescription:
+      'Отдельный hot-сценарий Kupibilet. Работает как на веб-сайте и использует тот же backend-скрипт горячих билетов.',
+    submit: 'Найти билеты',
+    blocked: 'Войдите в аккаунт, чтобы использовать основной парсер.',
+  },
+  auth: {
+    loginTitle: 'Вход',
+    registerTitle: 'Регистрация',
+    username: 'Имя пользователя',
+    password: 'Пароль',
+    submitLogin: 'Войти',
+    submitRegister: 'Создать аккаунт',
+    switchLogin: 'Уже есть аккаунт? Войти',
+    switchRegister: 'Нет аккаунта? Зарегистрироваться',
+    logout: 'Выйти',
+    current: 'Вы вошли как',
+  },
+  resultsEmpty: 'Пока нет результатов. Запусти поиск через окно выше.',
+  favoritesEmpty: 'Пока нет сохранённых билетов.',
+  historyEmpty: 'История пока пустая.',
+  favoriteAdd: 'В избранное',
+  favoriteRemove: 'Убрать из избранного',
+  favoriteLogin: 'Войдите для избранного',
+  openTicket: 'Открыть билет',
+  repeatSearch: 'Повторить поиск',
+  transfers: {
+    zero: 'Прямой рейс',
+    one: '1 пересадка',
+    many: (count) => `${count} пересадки`,
+  },
+  hotFallback: 'Kupibilet не передал таймер для этой карточки.',
+  hotExpired: 'Время истекло. Показываем обычную цену.',
 };
 
-const defaultSearch = {
-  from: '',
-  to: '',
-  routeMode: 'exact',
-  searchMode: 'oneDay',
+const defaultForm = {
+  from: 'Москва',
+  to: 'Сочи',
+  routeMode: 'anywhere',
+  searchMode: 'single',
   date: '',
   rangeStart: '',
   rangeEnd: '',
-  priceFrom: '',
-  priceTo: '',
-  airlineCode: '',
-  source: 'both',
+  source: 'aviasales',
+  kupibiletHotOffer: false,
 };
 
-function Btn({ label, onPress, theme, secondary = false, disabled = false }) {
+const CITY_TO_IATA = {
+  москва: 'MOW',
+  moscow: 'MOW',
+  мск: 'MOW',
+  'санкт петербург': 'LED',
+  'saint petersburg': 'LED',
+  petersburg: 'LED',
+  спб: 'LED',
+  сочи: 'AER',
+  sochi: 'AER',
+  оренбург: 'REN',
+  orenburg: 'REN',
+  уфа: 'UFA',
+  ufa: 'UFA',
+  казань: 'KZN',
+  kazan: 'KZN',
+  самара: 'KUF',
+  samara: 'KUF',
+  екатеринбург: 'SVX',
+  yekaterinburg: 'SVX',
+  новосибирск: 'OVB',
+  novosibirsk: 'OVB',
+  краснодар: 'KRR',
+  krasnodar: 'KRR',
+};
+
+function normalizeLocationKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[.,]/g, ' ')
+    .replace(/[-–—]/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeLocation(value) {
+  const cleaned = String(value || '').trim();
+  const upper = cleaned.toUpperCase();
+  if (/^[A-Z]{3}$/.test(upper)) {
+    return upper;
+  }
+  return CITY_TO_IATA[normalizeLocationKey(cleaned)] || cleaned;
+}
+
+function formatPrice(value) {
+  const numeric = Number(value || 0);
+  if (!numeric) {
+    return '0 RUB';
+  }
+  return `${new Intl.NumberFormat('ru-RU').format(numeric)} RUB`;
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return 'Дата не указана';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function parseHotTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function formatCountdown(expiresAt, nowMs) {
+  if (!expiresAt) {
+    return null;
+  }
+  const diff = expiresAt - nowMs;
+  if (diff <= 0) {
+    return null;
+  }
+  const hours = Math.floor(diff / 3600000);
+  const minutes = Math.floor((diff % 3600000) / 60000);
+  const seconds = Math.floor((diff % 60000) / 1000);
+  return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function transfersLabel(count) {
+  const numeric = Number(count || 0);
+  if (numeric <= 0) {
+    return TEXT.transfers.zero;
+  }
+  if (numeric === 1) {
+    return TEXT.transfers.one;
+  }
+  return TEXT.transfers.many(numeric);
+}
+
+function getTicketKey(ticket) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.btn,
-        {
-          backgroundColor: secondary ? theme.panelStrong : theme.accentStrong,
-          borderColor: secondary ? theme.border : theme.accent,
-          opacity: disabled ? 0.45 : pressed ? 0.88 : 1,
-        },
-      ]}
-    >
-      <Text style={[styles.btnText, { color: theme.text }]}>{label}</Text>
-    </Pressable>
+    ticket.ticket_key ||
+    ticket.ticketKey ||
+    ticket.link ||
+    `${ticket.source || 'ticket'}:${ticket.route || ''}:${ticket.departure_at || ''}:${ticket.price || ''}`
   );
 }
 
-function Input({ label, theme, ...props }) {
+function normalizeTicket(ticket) {
+  const price = Number(ticket.price || 0);
+  const originalPrice = Number(ticket.original_price || 0) || null;
+  return {
+    ...ticket,
+    price,
+    original_price: originalPrice,
+    hot_discount_percent: ticket.hot_discount_percent ? Number(ticket.hot_discount_percent) : null,
+    hot_expires_at: ticket.hot_expires_at || null,
+    special_offer_label: String(ticket.special_offer_label || '').trim(),
+    ticket_key: getTicketKey(ticket),
+  };
+}
+
+function sortTicketItems(items, nowMs = Date.now()) {
+  return [...(items || [])].sort((left, right) => {
+    const leftExpires = parseHotTimestamp(left?.hot_expires_at);
+    const rightExpires = parseHotTimestamp(right?.hot_expires_at);
+    const leftHot = leftExpires && leftExpires > nowMs && left?.price ? Number(left.price) : Number(left?.price || 0);
+    const rightHot = rightExpires && rightExpires > nowMs && right?.price ? Number(right.price) : Number(right?.price || 0);
+    if (leftHot !== rightHot) {
+      return leftHot - rightHot;
+    }
+    return String(left?.departure_at || '').localeCompare(String(right?.departure_at || ''));
+  });
+}
+
+function mergeUniqueTickets(currentItems, incomingItems) {
+  const byKey = new Map();
+
+  for (const item of currentItems || []) {
+    byKey.set(getTicketKey(item), item);
+  }
+
+  for (const item of incomingItems || []) {
+    byKey.set(getTicketKey(item), normalizeTicket(item));
+  }
+
+  return Array.from(byKey.values());
+}
+
+function buildTicketRoute(ticket) {
+  const route = String(ticket.route || '').trim();
+  if (route) {
+    return route;
+  }
+
+  const origin = String(ticket.origin || ticket.origin_airport || ticket.origin_code || '').trim();
+  const destination = String(ticket.destination || ticket.destination_airport || ticket.destination_code || '').trim();
+
+  if (origin && destination) {
+    return `${origin} → ${destination}`;
+  }
+
+  return 'Маршрут не указан';
+}
+
+function DateInput({ value, onChange, disabled, theme = fallbackTheme }) {
+  if (typeof document !== 'undefined') {
+    return createElement('input', {
+      type: 'date',
+      value: value || '',
+      disabled,
+      onChange: (event) => onChange(event.target.value),
+      style: {
+        width: '100%',
+        border: '1px solid #bdd3f1',
+        borderRadius: '18px',
+        padding: '14px 16px',
+        fontSize: '16px',
+        color: disabled ? '#86a0c0' : '#173057',
+        backgroundColor: disabled ? '#eef4ff' : '#ffffff',
+        outline: 'none',
+        boxSizing: 'border-box',
+        opacity: disabled ? 0.7 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      },
+    });
+  }
+
   return (
-    <View style={styles.stack8}>
-      <Text style={[styles.label, { color: theme.muted }]}>{label}</Text>
+    <TextInput
+      value={value}
+      onChangeText={onChange}
+      editable={!disabled}
+      placeholder="YYYY-MM-DD"
+      placeholderTextColor={theme.muted}
+      style={[
+        styles.input,
+        {
+          backgroundColor: disabled ? theme.inputDisabled : theme.input,
+          borderColor: theme.border,
+          color: disabled ? theme.muted : theme.text,
+        },
+        disabled && styles.inputDisabled,
+      ]}
+    />
+  );
+}
+
+class AppErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <SafeAreaView style={styles.errorBoundary}>
+          <Text style={styles.errorBoundaryTitle}>Mobile client упал в рантайме</Text>
+          <Text style={styles.errorBoundaryText}>{String(this.state.error?.message || this.state.error)}</Text>
+        </SafeAreaView>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function SectionLabel({ children, theme = fallbackTheme }) {
+  return <Text style={[styles.sectionLabel, { color: theme.text }]}>{children}</Text>;
+}
+
+function TextField({ label, value, onChange, placeholder, disabled, dimmed = false, theme = fallbackTheme }) {
+  return (
+    <View style={[styles.fieldBlock, dimmed && styles.fieldBlockDimmed]}>
+      <SectionLabel theme={theme}>{label}</SectionLabel>
       <TextInput
+        value={value}
+        onChangeText={onChange}
+        editable={!disabled}
+        placeholder={placeholder}
         placeholderTextColor={theme.muted}
         style={[
           styles.input,
           {
-            backgroundColor: theme.panelStrong,
+            backgroundColor: disabled ? theme.inputDisabled : theme.input,
             borderColor: theme.border,
-            color: theme.text,
+            color: disabled ? theme.muted : theme.text,
           },
+          disabled && styles.inputDisabled,
         ]}
-        {...props}
       />
     </View>
   );
 }
 
-function Segments({ value, onChange, options, theme }) {
+function ActionButton({ label, onPress, variant = 'primary', disabled = false, theme = fallbackTheme }) {
   return (
-    <View style={[styles.segmentWrap, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-      {options.map((item) => {
-        const active = value === item.value;
-        return (
-          <Pressable
-            key={item.value}
-            onPress={() => onChange(item.value)}
-            style={[
-              styles.segment,
-              {
-                backgroundColor: active ? theme.accentStrong : 'transparent',
-                borderColor: active ? theme.accent : 'transparent',
-              },
-            ]}
-          >
-            <Text style={[styles.segmentText, { color: active ? '#f8fbff' : theme.muted }]}>{item.label}</Text>
-          </Pressable>
-        );
-      })}
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      style={({ pressed }) => [
+        styles.button,
+        variant === 'secondary'
+          ? [styles.buttonSecondary, { backgroundColor: theme.surface, borderColor: theme.border }]
+          : [styles.buttonPrimary, { backgroundColor: theme.primary }],
+        disabled && styles.buttonDisabled,
+        pressed && !disabled && styles.buttonPressed,
+      ]}
+    >
+      <Text
+        style={[
+          styles.buttonText,
+          variant === 'secondary'
+            ? [styles.buttonSecondaryText, { color: theme.secondaryText }]
+            : { color: theme.primaryText },
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ToggleChip({ label, active, onPress, disabled = false, theme = fallbackTheme }) {
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      style={[
+        styles.toggleChip,
+        {
+          backgroundColor: active ? theme.chipActive : theme.chip,
+          borderColor: active ? theme.primary : theme.border,
+        },
+        active && styles.toggleChipActive,
+        disabled && styles.toggleChipDisabled,
+      ]}
+    >
+      <Text
+        style={[
+          styles.toggleChipText,
+          { color: active ? theme.chipTextActive : theme.chipText },
+          active && styles.toggleChipTextActive,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function AccountStatusBadge({ authenticated }) {
+  return (
+    <View style={[styles.accountStatusBadge, authenticated ? styles.accountStatusBadgeOn : styles.accountStatusBadgeOff]}>
+      <View style={[styles.accountStatusDot, authenticated ? styles.accountStatusDotOn : styles.accountStatusDotOff]} />
+      <Text style={[styles.accountStatusText, authenticated ? styles.accountStatusTextOn : styles.accountStatusTextOff]}>
+        {authenticated ? 'Аккаунт подключён' : 'Гость'}
+      </Text>
     </View>
   );
 }
 
-function TicketCard({ ticket, onFavorite, pendingKey, theme }) {
+function AccountStatusBadgeThemed({ authenticated, theme = fallbackTheme }) {
   return (
-    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <View style={styles.rowBetween}>
-        <Text style={[styles.badge, { color: theme.accent, backgroundColor: theme.panelStrong }]}>{sourceLabel(ticket.source)}</Text>
-        <Text style={[styles.price, { color: theme.accentStrong }]}>{formatPrice(ticket.price)}</Text>
-      </View>
-      <Text style={[styles.title, { color: theme.text }]}>
-        {ticket.origin} {'->'} {ticket.destination}
+    <View
+      style={[
+        styles.accountStatusBadge,
+        {
+          backgroundColor: authenticated ? 'rgba(34, 115, 71, 0.18)' : 'rgba(181, 60, 60, 0.16)',
+          borderColor: authenticated ? 'rgba(78, 194, 124, 0.28)' : 'rgba(215, 97, 97, 0.24)',
+        },
+      ]}
+    >
+      <View style={[styles.accountStatusDot, authenticated ? styles.accountStatusDotOn : styles.accountStatusDotOff]} />
+      <Text
+        style={[
+          styles.accountStatusText,
+          { color: authenticated ? '#bff3cf' : '#ffd1d1' },
+        ]}
+      >
+        {authenticated ? 'Аккаунт подключён' : 'Гость'}
       </Text>
-      <Text style={[styles.meta, { color: theme.muted }]}>Авиакомпания: {ticket.airline || 'Не указана'}</Text>
-      <Text style={[styles.meta, { color: theme.muted }]}>{transfersLabel(ticket.transfers || 0)}</Text>
-      <Text style={[styles.meta, { color: theme.muted }]}>Вылет: {formatDateTime(ticket.departure_at)}</Text>
-      {!!ticket.baggage_info && (
-        <View style={[styles.noteBox, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-          <Text style={[styles.noteText, { color: theme.text }]}>Багаж и тариф: {ticket.baggage_info}</Text>
+    </View>
+  );
+}
+
+function StartupModal({ visible, city, onCityChange, onSkip, onSubmit, loading, theme = fallbackTheme }) {
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+      <View style={[styles.modalCard, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+        <Text style={styles.modalBadge}>{TEXT.popup.badge}</Text>
+        <Text style={[styles.modalTitle, { color: theme.text }]}>{TEXT.popup.title}</Text>
+        <Text style={[styles.modalBody, { color: theme.muted }]}>{TEXT.popup.body}</Text>
+        <TextField
+          label={TEXT.popup.city}
+          value={city}
+          onChange={onCityChange}
+          placeholder={TEXT.popup.cityPlaceholder}
+          disabled={loading}
+          theme={theme}
+        />
+        <View style={styles.modalActions}>
+          <ActionButton label={TEXT.popup.skip} onPress={onSkip} variant="secondary" disabled={loading} theme={theme} />
+          <ActionButton
+            label={loading ? 'Ищем...' : TEXT.popup.submit}
+            onPress={onSubmit}
+            disabled={loading || !city.trim()}
+            theme={theme}
+          />
         </View>
-      )}
-      {ticket.estimated_price ? (
-        <View style={[styles.noteBox, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-          <Text style={[styles.noteText, { color: theme.muted }]}>
-            Для режима "Хоть куда" цена ориентировочная.
-          </Text>
+      </View>
+    </View>
+  );
+}
+
+function TicketCard({ ticket, isFavorite, canToggleFavorite, onToggleFavorite, loading = false, nowMs = Date.now(), theme = fallbackTheme }) {
+  const expiresAt = parseHotTimestamp(ticket.hot_expires_at);
+  const countdown = formatCountdown(expiresAt, nowMs);
+  const hotActive = Boolean(ticket.hot_discount_percent) && Boolean(countdown);
+  const hotExpired = Boolean(ticket.hot_discount_percent) && !countdown && Boolean(expiresAt);
+  const displayPrice = hotExpired && ticket.original_price ? ticket.original_price : ticket.price;
+  const routeLabel = buildTicketRoute(ticket);
+  const specialLabel = String(ticket.special_offer_label || '').trim();
+  const badgeText = hotActive
+    ? `Горячая цена: -${ticket.hot_discount_percent}% · ${countdown}`
+    : specialLabel
+      ? specialLabel
+      : ticket.hot_discount_percent
+      ? `Скидка ${ticket.hot_discount_percent}%`
+      : null;
+  const noteText = hotActive
+    ? 'Пока таймер активен, показываем временную цену из Kupibilet. После окончания вернётся обычная цена.'
+    : hotExpired
+      ? TEXT.hotExpired
+      : badgeText
+        ? `${badgeText}. ${TEXT.hotFallback}`
+        : 'Цена может отличаться на 300-400 RUB из-за обновления выдачи и изменения тарифа в момент перехода.';
+
+  return (
+    <View style={[styles.ticketCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.ticketHeader}>
+        <Text style={[styles.ticketSource, { backgroundColor: theme.note, color: theme.secondaryText }]}>{ticket.source || 'Kupibilet'}</Text>
+        <View style={styles.ticketPriceBlock}>
+          {ticket.original_price && !hotExpired ? (
+            <Text style={styles.ticketOldPrice}>{formatPrice(ticket.original_price)}</Text>
+          ) : null}
+          <Text style={[styles.ticketPrice, { color: theme.text }]}>{formatPrice(displayPrice)}</Text>
+        </View>
+      </View>
+
+      <Text style={[styles.ticketRoute, { color: theme.text }]}>{routeLabel}</Text>
+      <Text style={[styles.ticketSubroute, { color: theme.secondaryText }]}>{routeLabel}</Text>
+      <Text style={[styles.ticketMeta, { color: theme.secondaryText }]}>Авиакомпания: {ticket.airline || 'Не указана'}</Text>
+
+      {badgeText ? (
+        <View style={[styles.hotBadge, { backgroundColor: hotExpired ? theme.note : theme.hotBadge, borderColor: hotExpired ? theme.noteBorder : theme.hotBadgeBorder }, hotActive && styles.hotBadgeActive, hotExpired && styles.hotBadgeExpired]}>
+          <Text style={[styles.hotBadgeText, { color: hotExpired ? theme.secondaryText : theme.hotBadgeText }, hotActive && styles.hotBadgeTextActive]}>{badgeText}</Text>
         </View>
       ) : null}
-      <View style={styles.stack10}>
-        <Btn
-          label={ticket.is_favorite ? 'Убрать из избранного' : 'В избранное'}
-          onPress={() => onFavorite(ticket)}
+
+      <Text style={[styles.ticketInfo, { color: theme.muted }]}>{transfersLabel(ticket.transfers)}</Text>
+      <Text style={[styles.ticketInfo, { color: theme.muted }]}>Вылет: {formatDateTime(ticket.departure_at)}</Text>
+
+      <View style={[styles.ticketNote, { backgroundColor: theme.note, borderColor: theme.noteBorder }]}>
+        <Text style={[styles.ticketNoteText, { color: theme.secondaryText }]}>{noteText}</Text>
+      </View>
+
+      <View style={styles.ticketActions}>
+        <ActionButton
+          label={
+            canToggleFavorite
+              ? isFavorite
+                ? TEXT.favoriteRemove
+                : TEXT.favoriteAdd
+              : TEXT.favoriteLogin
+          }
+          onPress={() => onToggleFavorite(ticket)}
+          variant="secondary"
+          disabled={!canToggleFavorite || loading}
           theme={theme}
-          secondary
-          disabled={pendingKey === ticket.ticket_key}
         />
-        <Btn label="Открыть билет" onPress={() => ticket.link && Linking.openURL(ticket.link)} theme={theme} disabled={!ticket.link} />
+        <ActionButton
+          label={TEXT.openTicket}
+          onPress={() => {
+            if (typeof window !== 'undefined' && ticket.link) {
+              window.open(ticket.link, '_blank', 'noopener,noreferrer');
+            }
+          }}
+          disabled={!ticket.link || loading}
+          theme={theme}
+        />
       </View>
     </View>
   );
 }
 
-export default function App() {
-  const [themeMode, setThemeMode] = useState('dark');
-  const theme = useMemo(() => themes[themeMode], [themeMode]);
-  const [activeTab, setActiveTab] = useState('search');
-  const [authMode, setAuthMode] = useState('login');
+function AppInner() {
   const [authUser, setAuthUser] = useState(null);
-  const [authForm, setAuthForm] = useState({ username: '', password: '' });
-  const [searchForm, setSearchForm] = useState(defaultSearch);
-  const [tickets, setTickets] = useState([]);
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [tab, setTab] = useState('search');
+  const [themeMode, setThemeMode] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'light';
+    }
+    return window.localStorage.getItem('airparser-mobile-theme') || 'light';
+  });
+  const [form, setForm] = useState(defaultForm);
+  const [results, setResults] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const [history, setHistory] = useState([]);
   const [historyTickets, setHistoryTickets] = useState([]);
-  const [historyTitle, setHistoryTitle] = useState('');
-  const [serverTime, setServerTime] = useState('');
-  const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
-  const [checkingSession, setCheckingSession] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [authSubmitting, setAuthSubmitting] = useState(false);
-  const [favoritePendingKey, setFavoritePendingKey] = useState('');
-  const [historyPendingId, setHistoryPendingId] = useState(null);
-  const [sortCheapFirst, setSortCheapFirst] = useState(true);
+  const [historyTicketsTitle, setHistoryTicketsTitle] = useState('');
+  const [openHistoryId, setOpenHistoryId] = useState(null);
+  const [startupModalOpen, setStartupModalOpen] = useState(false);
+  const [startupCity, setStartupCity] = useState('');
+  const [registerMode, setRegisterMode] = useState(false);
+  const [authForm, setAuthForm] = useState({ username: '', password: '' });
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [parserInfoOpen, setParserInfoOpen] = useState(false);
+  const theme = themes[themeMode] || fallbackTheme;
+  const darkTheme = themeMode === 'dark';
 
   useEffect(() => {
-    let active = true;
-    api.authMe()
-      .then((payload) => {
-        if (active) setAuthUser(payload.authenticated ? payload.user : null);
-      })
-      .catch(() => {
-        if (active) setAuthUser(null);
-      })
-      .finally(() => {
-        if (active) setCheckingSession(false);
-      });
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('airparser-mobile-theme', themeMode);
+    }
+  }, [themeMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      try {
+        const me = await api.authMe();
+        if (!cancelled) {
+          setAuthUser(me.authenticated ? me.user : null);
+        }
+      } catch {
+        if (!cancelled) {
+          setAuthUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingSession(false);
+          setStartupModalOpen(true);
+        }
+      }
+    }
+
+    bootstrap();
     return () => {
-      active = false;
+      cancelled = true;
     };
   }, []);
 
   useEffect(() => {
-    if (!authUser) {
-      setFavorites([]);
-      setHistory([]);
-      return;
+    let cancelled = false;
+
+    async function loadPrivateData() {
+      if (!authUser) {
+        setFavorites([]);
+        setHistory([]);
+        return;
+      }
+
+      try {
+        const [favoritePayload, historyPayload] = await Promise.all([api.favorites(), api.history()]);
+        if (!cancelled) {
+          const favoriteItems = Array.isArray(favoritePayload.favorites)
+            ? favoritePayload.favorites
+            : Array.isArray(favoritePayload.tickets)
+              ? favoritePayload.tickets
+              : [];
+          const historyItems = Array.isArray(historyPayload.history)
+            ? historyPayload.history
+            : Array.isArray(historyPayload.items)
+              ? historyPayload.items
+              : [];
+          setFavorites(favoriteItems.map(normalizeTicket));
+          setHistory(historyItems);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError.message || 'Не удалось загрузить данные аккаунта.');
+        }
+      }
     }
-    api.favorites().then((payload) => setFavorites(payload.favorites || [])).catch(() => {});
-    api.history().then((payload) => setHistory(payload.history || [])).catch(() => {});
+
+    loadPrivateData();
+    return () => {
+      cancelled = true;
+    };
   }, [authUser]);
 
-  const visibleHistory = useMemo(() => history.filter((item) => Number(item.result_count || 0) > 0), [history]);
-  const shownTickets = useMemo(() => {
-    if (!sortCheapFirst) return tickets;
-    return [...tickets].sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
-  }, [sortCheapFirst, tickets]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  function patchSearch(name, value) {
-    setSearchForm((current) => ({ ...current, [name]: value }));
-  }
+  const favoriteKeys = useMemo(() => new Set(favorites.map(getTicketKey)), [favorites]);
+  const interactionLocked = loading || startupModalOpen;
+  const displayedResults = useMemo(() => sortTicketItems(results, nowTick), [results, nowTick]);
+  const displayedFavorites = useMemo(() => sortTicketItems(favorites, nowTick), [favorites, nowTick]);
+  const displayedHistoryTickets = useMemo(() => sortTicketItems(historyTickets, nowTick), [historyTickets, nowTick]);
 
-  function withFavoriteFlags(items, favoritesList = favorites) {
-    const keys = new Set(favoritesList.map((item) => item.ticket_key));
-    return (items || []).map((item) => ({ ...item, is_favorite: keys.has(item.ticket_key) }));
-  }
-
-  async function refreshLists() {
-    if (!authUser) return;
-    const [favPayload, historyPayload] = await Promise.all([api.favorites(), api.history()]);
-    setFavorites(favPayload.favorites || []);
-    setHistory(historyPayload.history || []);
-  }
-
-  async function submitAuth() {
-    setAuthSubmitting(true);
-    setError('');
-    try {
-      const payload = authMode === 'login' ? await api.login(authForm) : await api.register(authForm);
-      setAuthUser(payload.user);
-      setAuthForm({ username: '', password: '' });
-      setInfo(authMode === 'login' ? 'Вход выполнен.' : 'Аккаунт создан.');
-      setActiveTab('search');
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Ошибка авторизации');
-    } finally {
-      setAuthSubmitting(false);
+  const visibleSourceOptions = useMemo(() => {
+    if (form.routeMode === 'anywhere') {
+      return [{ key: 'aviasales', label: TEXT.search.sourceAviasales }];
     }
-  }
+    return [
+      { key: 'both', label: TEXT.search.sourceBoth },
+      { key: 'aviasales', label: TEXT.search.sourceAviasales },
+      { key: 'tutu', label: TEXT.search.sourceTutu },
+      { key: 'kupibilet', label: TEXT.search.sourceKupibilet },
+    ];
+  }, [form.routeMode]);
 
-  async function logout() {
-    setAuthSubmitting(true);
-    try {
-      await api.logout();
-      setAuthUser(null);
-      setTickets([]);
-      setFavorites([]);
-      setHistory([]);
-      setHistoryTickets([]);
-      setHistoryTitle('');
-      setInfo('Сессия завершена.');
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Не удалось выйти');
-    } finally {
-      setAuthSubmitting(false);
+  const canUseMainParser = Boolean(authUser);
+  const hasSearchResults = results.length > 0;
+  const hotAnywhereDateLocked = form.routeMode === 'anywhere' && form.kupibiletHotOffer;
+  const canSearch = useMemo(() => {
+    if (!canUseMainParser) {
+      return false;
     }
-  }
+    if (!form.from.trim()) {
+      return false;
+    }
+    if (form.routeMode === 'destination' && !form.kupibiletHotOffer && !form.to.trim()) {
+      return false;
+    }
+    if (!hotAnywhereDateLocked && form.searchMode === 'single' && !form.date) {
+      return false;
+    }
+    if (!hotAnywhereDateLocked && form.searchMode === 'range' && (!form.rangeStart || !form.rangeEnd)) {
+      return false;
+    }
+    return true;
+  }, [canUseMainParser, form, hotAnywhereDateLocked]);
 
-  async function runSearch() {
-    if (!authUser) {
-      setActiveTab('account');
-      setError('Сначала войди в аккаунт.');
+  async function runSearch(activeForm, allowGuest = false, options = {}) {
+    const { switchTab = true } = options;
+    if (!allowGuest && !authUser) {
+      setError(TEXT.search.blocked);
       return;
     }
+
+    const anywhere = activeForm.routeMode === 'anywhere';
+    const source = activeForm.kupibiletHotOffer
+      ? 'kupibilet'
+      : anywhere
+        ? 'aviasales'
+        : activeForm.source;
+
+    const route = activeForm.kupibiletHotOffer
+      ? normalizeLocation(activeForm.from)
+      : anywhere
+        ? normalizeLocation(activeForm.from)
+        : `${normalizeLocation(activeForm.from)} - ${normalizeLocation(activeForm.to)}`;
+    const hotAnywhereRequest = activeForm.routeMode === 'anywhere' && activeForm.kupibiletHotOffer;
+    const dateValue = hotAnywhereRequest ? null : activeForm.searchMode === 'range' ? activeForm.rangeStart : activeForm.date;
+    const returnDateValue = hotAnywhereRequest ? null : activeForm.searchMode === 'range' ? activeForm.rangeEnd : null;
+    const useFastKupibiletPass = Boolean(activeForm.kupibiletHotOffer && (anywhere || !activeForm.to.trim()));
+    const basePayload = {
+      route,
+      anywhere,
+      source,
+      kupibilet_hot_offer: Boolean(activeForm.kupibiletHotOffer),
+      date: dateValue || null,
+      return_date: returnDateValue || null,
+    };
+
     setLoading(true);
     setError('');
-    setInfo('');
-    setTickets([]);
-    setActiveTab('results');
     try {
-      const anywhere = searchForm.routeMode === 'anywhere';
-      const payload = await api.search({
-        route: buildRoute({ from: searchForm.from, to: searchForm.to, anywhere }),
-        anywhere,
-        date: searchForm.searchMode === 'range' ? searchForm.rangeStart || null : searchForm.date || null,
-        return_date: searchForm.searchMode === 'range' ? searchForm.rangeEnd || null : null,
-        price_from: searchForm.priceFrom || null,
-        price_to: searchForm.priceTo || null,
-        airline_code: searchForm.airlineCode || null,
-        source: anywhere ? 'aviasales' : searchForm.source,
+      const response = await api.search({
+        ...basePayload,
+        deep_scan: useFastKupibiletPass ? false : true,
+        limit: useFastKupibiletPass ? 10 : null,
       });
-      const nextTickets = withFavoriteFlags(payload.tickets || []);
-      setTickets(nextTickets);
-      setServerTime(payload.server_time || '');
-      setInfo(nextTickets.length ? `Найдено билетов: ${nextTickets.length}` : 'Билеты не найдены.');
-      await refreshLists().catch(() => {});
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Ошибка поиска');
+      const normalized = Array.isArray(response.tickets) ? response.tickets.map(normalizeTicket) : [];
+      setResults(normalized);
+      if (switchTab) {
+        setTab('results');
+      } else {
+        setTab('search');
+      }
+      if (activeForm.kupibiletHotOffer && normalized.length === 0 && !useFastKupibiletPass) {
+        setError('Горячие билеты Kupibilet не найдены для этого запроса.');
+      }
+      if (useFastKupibiletPass) {
+        void (async () => {
+          try {
+            const deepResponse = await api.search({
+              ...basePayload,
+              deep_scan: true,
+              limit: 40,
+            });
+            const deepTickets = Array.isArray(deepResponse.tickets) ? deepResponse.tickets : [];
+            if (!deepTickets.length) {
+              setResults((current) => {
+                if (!current.length) {
+                  setError('Горячие билеты Kupibilet не найдены для этого запроса.');
+                }
+                return current;
+              });
+              return;
+            }
+            setError('');
+            setResults((current) => mergeUniqueTickets(current, deepTickets));
+          } catch {
+            setResults((current) => {
+              if (!current.length) {
+                setError('Не удалось догрузить горячие билеты Kupibilet. Попробуйте ещё раз.');
+              }
+              return current;
+            });
+          }
+        })();
+      }
+      if (authUser) {
+        try {
+          const historyPayload = await api.history();
+          setHistory(Array.isArray(historyPayload.items || historyPayload.history) ? (historyPayload.items || historyPayload.history) : []);
+        } catch {
+          // Keep current history snapshot when refresh fails.
+        }
+      }
+    } catch (searchError) {
+      setError(searchError.message || 'Поисковый запрос не выполнился.');
     } finally {
       setLoading(false);
     }
   }
 
-  async function toggleFavorite(ticket) {
-    if (!authUser || !ticket.ticket_key) return;
-    setFavoritePendingKey(ticket.ticket_key);
+  async function handleQuickSearch() {
+    const quickForm = {
+      ...defaultForm,
+      from: startupCity.trim(),
+      routeMode: 'anywhere',
+      source: 'kupibilet',
+      kupibiletHotOffer: true,
+      date: '',
+      rangeStart: '',
+      rangeEnd: '',
+    };
+    setForm(quickForm);
+    setTab('search');
+    setStartupModalOpen(false);
+    await runSearch(quickForm, true, { switchTab: false });
+  }
+
+  async function handleAuthSubmit() {
+    setLoading(true);
+    setError('');
     try {
-      if (ticket.is_favorite) {
-        await api.removeFavorite(ticket.ticket_key);
-        setFavorites((current) => current.filter((item) => item.ticket_key !== ticket.ticket_key));
-        setTickets((current) => current.map((item) => item.ticket_key === ticket.ticket_key ? { ...item, is_favorite: false } : item));
-        setHistoryTickets((current) => current.map((item) => item.ticket_key === ticket.ticket_key ? { ...item, is_favorite: false } : item));
-      } else {
-        const payload = await api.addFavorite(ticket);
-        setFavorites((current) => [payload.favorite, ...current.filter((item) => item.ticket_key !== payload.favorite.ticket_key)]);
-        setTickets((current) => current.map((item) => item.ticket_key === payload.favorite.ticket_key ? { ...item, is_favorite: true } : item));
-        setHistoryTickets((current) => current.map((item) => item.ticket_key === payload.favorite.ticket_key ? { ...item, is_favorite: true } : item));
-      }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Ошибка избранного');
+      const payload = registerMode ? await api.register(authForm) : await api.login(authForm);
+      setAuthUser(payload.user || null);
+      setAuthForm({ username: '', password: '' });
+      setTab('search');
+    } catch (authError) {
+      setError(authError.message || 'Не удалось выполнить вход.');
     } finally {
-      setFavoritePendingKey('');
+      setLoading(false);
     }
   }
 
-  async function openHistory(item) {
-    setHistoryPendingId(item.id);
+  async function handleLogout() {
+    await api.logout();
+    setAuthUser(null);
+    setTab('search');
+  }
+
+  async function handleToggleFavorite(ticket) {
+    if (!authUser) {
+      return;
+    }
+    const key = getTicketKey(ticket);
+    const exists = favoriteKeys.has(key);
+    try {
+      if (exists) {
+        await api.removeFavorite(key);
+        setFavorites((current) => current.filter((item) => getTicketKey(item) !== key));
+      } else {
+        await api.addFavorite(ticket);
+        setFavorites((current) => [normalizeTicket(ticket), ...current]);
+      }
+    } catch (favoriteError) {
+      setError(favoriteError.message || 'Не удалось обновить избранное.');
+    }
+  }
+
+  function handleRepeatHistory(item) {
+    const route = String(item.route || '');
+    const anywhere = route.includes('Хоть куда');
+    const [fromPart, toPart] = route.split('→').map((part) => (part || '').trim());
+    const nextForm = {
+      ...defaultForm,
+      from: fromPart || defaultForm.from,
+      to: anywhere ? '' : toPart || '',
+      routeMode: anywhere ? 'anywhere' : 'destination',
+      searchMode: item.return_date ? 'range' : 'single',
+      date: item.date || '',
+      rangeStart: item.date || '',
+      rangeEnd: item.return_date || '',
+      source: item.source === 'kupibilet' ? 'kupibilet' : item.source || 'aviasales',
+      kupibiletHotOffer: Boolean(item.kupibilet_hot_offer),
+    };
+    setForm(nextForm);
+    setTab('search');
+  }
+
+  async function handleOpenHistoryTickets(item) {
+    if (openHistoryId === item.id) {
+      setOpenHistoryId(null);
+      setHistoryTickets([]);
+      setHistoryTicketsTitle('');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
     try {
       const payload = await api.historyTickets(item.id);
-      setHistoryTickets(withFavoriteFlags(payload.tickets || []));
-      setHistoryTitle(item.route);
-      setServerTime(payload.server_time || '');
-      setActiveTab('history');
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Не удалось открыть историю');
+      const nextTickets = Array.isArray(payload.tickets) ? payload.tickets.map(normalizeTicket) : [];
+      setHistoryTickets(nextTickets);
+      setHistoryTicketsTitle(item.route || 'Билеты из истории');
+      setOpenHistoryId(item.id);
+    } catch (historyError) {
+      setError(historyError.message || 'Не удалось загрузить билеты из истории.');
     } finally {
-      setHistoryPendingId(null);
+      setLoading(false);
     }
-  }
-
-  async function removeHistory(id) {
-    setHistoryPendingId(id);
-    try {
-      await api.removeHistory(id);
-      setHistory((current) => current.filter((item) => item.id !== id));
-      if (historyTitle) {
-        setHistoryTitle('');
-        setHistoryTickets([]);
-      }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Не удалось удалить запись');
-    } finally {
-      setHistoryPendingId(null);
-    }
-  }
-
-  function repeatHistory(item) {
-    const anywhere = Boolean(item.anywhere);
-    let from = item.route;
-    let to = '';
-    if (!anywhere && item.route.includes(' - ')) {
-      const parts = item.route.split(' - ');
-      from = parts[0] || '';
-      to = parts[1] || '';
-    }
-    setSearchForm({
-      from,
-      to,
-      routeMode: anywhere ? 'anywhere' : 'exact',
-      searchMode: item.return_date ? 'range' : 'oneDay',
-      date: item.return_date ? '' : item.date || '',
-      rangeStart: item.return_date ? item.date || '' : '',
-      rangeEnd: item.return_date ? item.return_date || '' : '',
-      priceFrom: item.price_from == null ? '' : String(item.price_from),
-      priceTo: item.price_to == null ? '' : String(item.price_to),
-      airlineCode: item.airline_code || '',
-      source: item.source || 'both',
-    });
-    setActiveTab('search');
-    setInfo('Поля заполнены из истории.');
   }
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]}>
-      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
-      <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <View style={styles.app}>
-            <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.border }]}>
-              <Text style={[styles.brand, { color: theme.text }]}>{APP_TITLE}</Text>
-              <Text style={[styles.subtext, { color: theme.muted }]}>Отдельный React Native клиент под телефон.</Text>
-              <Text style={[styles.apiLine, { color: theme.muted }]}>API: {API_BASE_URL}</Text>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}>
+      <StatusBar style={darkTheme ? 'light' : 'dark'} />
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={[styles.title, { color: theme.text }]}>{TEXT.title}</Text>
+        <Text style={[styles.subtitle, { color: theme.muted }]}>{TEXT.subtitle}</Text>
+        <AccountStatusBadgeThemed authenticated={Boolean(authUser)} theme={theme} />
+
+        <View style={styles.topBarRow}>
+          <View style={styles.tabs}>
+            {Object.entries(TEXT.tabs).map(([key, label]) => (
+              <ToggleChip key={key} label={label} active={tab === key} onPress={() => setTab(key)} disabled={interactionLocked} theme={theme} />
+            ))}
+          </View>
+          <Pressable
+            onPress={() => setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'))}
+            style={[styles.themeToggle, { backgroundColor: theme.surface, borderColor: theme.border }]}
+          >
+            <Text style={[styles.themeToggleLabel, { color: theme.muted }]}>ТЕМА</Text>
+            <Text style={[styles.themeToggleValue, { color: theme.text }]}>{darkTheme ? 'Dark' : 'Light'}</Text>
+          </Pressable>
+        </View>
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {checkingSession ? <Text style={[styles.infoText, { color: theme.muted }]}>Проверяем сессию...</Text> : null}
+
+        {tab === 'search' ? (
+          <View style={[styles.card, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+            {!authUser ? <Text style={[styles.infoText, { color: theme.muted }]}>{TEXT.search.guestNote}</Text> : null}
+
+            <ActionButton
+              label={parserInfoOpen ? 'Скрыть описание парсера' : 'Что делает парсер'}
+              onPress={() => setParserInfoOpen((current) => !current)}
+              variant="secondary"
+              disabled={interactionLocked}
+              theme={theme}
+            />
+
+            {parserInfoOpen ? (
+              <View style={styles.ticketNote}>
+                <Text style={styles.ticketNoteText}>
+                  Парсер собирает билеты из подключенных источников в одну выдачу. В обычном режиме можно искать по
+                  маршруту, дате и источнику. Отдельно доступен сценарий горячих билетов Kupibilet с временной скидкой
+                  и таймером, если источник передаёт эти данные.
+                </Text>
+              </View>
+            ) : null}
+
+            <TextField
+              label={TEXT.search.from}
+              value={form.from}
+              onChange={(value) => setForm((current) => ({ ...current, from: value }))}
+              placeholder={TEXT.search.fromPlaceholder}
+              disabled={!canUseMainParser || interactionLocked}
+              theme={theme}
+            />
+
+            <TextField
+              label={TEXT.search.to}
+              value={form.to}
+              onChange={(value) => setForm((current) => ({ ...current, to: value }))}
+              placeholder={TEXT.search.toPlaceholder}
+              disabled={!canUseMainParser || interactionLocked || form.routeMode === 'anywhere' || form.kupibiletHotOffer}
+              dimmed={form.routeMode === 'anywhere'}
+              theme={theme}
+            />
+
+            <SectionLabel theme={theme}>{TEXT.search.routeTitle}</SectionLabel>
+            <View style={styles.inlineRow}>
+              <ToggleChip
+                label={TEXT.search.exactRoute}
+                active={form.routeMode === 'destination'}
+                onPress={() => setForm((current) => ({ ...current, routeMode: 'destination' }))}
+                disabled={!canUseMainParser || interactionLocked || form.kupibiletHotOffer}
+                theme={theme}
+              />
+              <ToggleChip
+                label={TEXT.search.anywhere}
+                active={form.routeMode === 'anywhere'}
+                onPress={() =>
+                  setForm((current) => ({
+                    ...current,
+                    routeMode: 'anywhere',
+                    ...(current.kupibiletHotOffer
+                      ? {
+                          date: '',
+                          rangeStart: '',
+                          rangeEnd: '',
+                          searchMode: 'single',
+                        }
+                      : null),
+                  }))
+                }
+                disabled={!canUseMainParser || interactionLocked}
+                theme={theme}
+              />
             </View>
 
-            <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.border }]}>
-              <View style={styles.rowBetween}>
-                <Text style={[styles.section, { color: theme.text }]}>Навигация</Text>
-                <View style={styles.switchRow}>
-                  <Text style={[styles.switchText, { color: theme.muted }]}>{themeMode === 'dark' ? 'Dark' : 'Light'}</Text>
-                  <Switch
-                    value={themeMode === 'light'}
-                    onValueChange={(value) => setThemeMode(value ? 'light' : 'dark')}
-                    trackColor={{ false: theme.border, true: theme.accent }}
-                    thumbColor="#ffffff"
+            <SectionLabel theme={theme}>{TEXT.search.dateTitle}</SectionLabel>
+            <View style={styles.inlineRow}>
+              <ToggleChip
+                label={TEXT.search.singleDay}
+                active={form.searchMode === 'single'}
+                onPress={() => setForm((current) => ({ ...current, searchMode: 'single' }))}
+                disabled={!canUseMainParser || interactionLocked || hotAnywhereDateLocked}
+                theme={theme}
+              />
+              <ToggleChip
+                label={TEXT.search.range}
+                active={form.searchMode === 'range'}
+                onPress={() => setForm((current) => ({ ...current, searchMode: 'range' }))}
+                disabled={!canUseMainParser || interactionLocked || hotAnywhereDateLocked}
+                theme={theme}
+              />
+            </View>
+
+            {form.searchMode === 'single' ? (
+              <View style={[styles.fieldBlock, hotAnywhereDateLocked ? styles.fieldBlockDimmed : null]}>
+                <SectionLabel theme={theme}>{TEXT.search.date}</SectionLabel>
+                <DateInput
+                  value={form.date}
+                  onChange={(value) => setForm((current) => ({ ...current, date: value }))}
+                  disabled={!canUseMainParser || interactionLocked || hotAnywhereDateLocked}
+                  theme={theme}
+                />
+              </View>
+            ) : (
+              <View style={styles.rangeGrid}>
+                <View style={[styles.fieldBlockRange, hotAnywhereDateLocked ? styles.fieldBlockDimmed : null]}>
+                  <SectionLabel theme={theme}>{TEXT.search.dateFrom}</SectionLabel>
+                  <DateInput
+                    value={form.rangeStart}
+                    onChange={(value) => setForm((current) => ({ ...current, rangeStart: value }))}
+                      disabled={!canUseMainParser || interactionLocked || hotAnywhereDateLocked}
+                    theme={theme}
+                  />
+                </View>
+                <View style={[styles.fieldBlockRange, hotAnywhereDateLocked ? styles.fieldBlockDimmed : null]}>
+                  <SectionLabel theme={theme}>{TEXT.search.dateTo}</SectionLabel>
+                  <DateInput
+                    value={form.rangeEnd}
+                    onChange={(value) => setForm((current) => ({ ...current, rangeEnd: value }))}
+                      disabled={!canUseMainParser || interactionLocked || hotAnywhereDateLocked}
+                    theme={theme}
                   />
                 </View>
               </View>
-              <View style={styles.stack10}>
-                {tabs.map((tab) => {
-                  const active = activeTab === tab;
-                  return (
-                    <Pressable
-                      key={tab}
-                      onPress={() => setActiveTab(tab)}
-                      style={[
-                        styles.navBtn,
-                        {
-                          backgroundColor: active ? theme.accentStrong : theme.panelStrong,
-                          borderColor: active ? theme.accent : theme.border,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.navBtnText, { color: active ? '#f8fbff' : theme.text }]}>{tabLabels[tab]}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <View style={[styles.accountState, { backgroundColor: theme.panelStrong, borderColor: authUser ? theme.success : theme.border }]}>
-                <View style={[styles.dot, { backgroundColor: authUser ? theme.success : theme.muted }]} />
-                <Text style={[styles.accountStateText, { color: authUser ? theme.success : theme.muted }]}>
-                  {authUser ? `Вошёл: ${authUser.username}` : 'Аккаунт не авторизован'}
-                </Text>
-              </View>
+            )}
+
+            <SectionLabel theme={theme}>{TEXT.search.sourceTitle}</SectionLabel>
+            <View style={styles.inlineRow}>
+              {visibleSourceOptions.map((option) => (
+                <ToggleChip
+                  key={option.key}
+                  label={option.label}
+                  active={form.source === option.key}
+                  onPress={() => setForm((current) => ({ ...current, source: option.key }))}
+                  disabled={!canUseMainParser || interactionLocked || form.kupibiletHotOffer}
+                  theme={theme}
+                />
+              ))}
             </View>
 
-            {error ? (
-              <View style={[styles.alert, { backgroundColor: theme.panel, borderColor: theme.danger }]}>
-                <Text style={[styles.alertText, { color: theme.text }]}>{error}</Text>
-              </View>
-            ) : null}
-
-            {info ? (
-              <View style={[styles.alert, { backgroundColor: theme.panel, borderColor: theme.success }]}>
-                <Text style={[styles.alertText, { color: theme.text }]}>{info}</Text>
-              </View>
-            ) : null}
-
-            {checkingSession ? (
-              <View style={[styles.loader, { backgroundColor: theme.panel, borderColor: theme.border }]}>
-                <ActivityIndicator color={theme.accent} />
-                <Text style={[styles.subtext, { color: theme.muted }]}>Проверяем сессию пользователя...</Text>
-              </View>
-            ) : null}
-
-            {activeTab === 'search' ? (
-              <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.border }]}>
-                <Text style={[styles.section, { color: theme.text }]}>Поиск билетов</Text>
-                <Input label="Откуда" value={searchForm.from} onChangeText={(v) => patchSearch('from', v)} placeholder="Москва / Moscow" theme={theme} />
-                <Input label="Куда" value={searchForm.to} onChangeText={(v) => patchSearch('to', v)} placeholder="Сочи / Sochi" editable={searchForm.routeMode !== 'anywhere'} theme={theme} />
-                <Text style={[styles.label, { color: theme.muted }]}>Логика направления</Text>
-                <Segments
-                  value={searchForm.routeMode}
-                  onChange={(v) => patchSearch('routeMode', v)}
-                  options={[
-                    { value: 'exact', label: 'Точный маршрут' },
-                    { value: 'anywhere', label: 'Хоть куда' },
-                  ]}
-                  theme={theme}
-                />
-                <Text style={[styles.label, { color: theme.muted }]}>Режим даты</Text>
-                <Segments
-                  value={searchForm.searchMode}
-                  onChange={(v) => patchSearch('searchMode', v)}
-                  options={[
-                    { value: 'oneDay', label: 'Один день' },
-                    { value: 'range', label: 'Диапазон' },
-                  ]}
-                  theme={theme}
-                />
-                {searchForm.searchMode === 'oneDay' ? (
-                  <Input label="Дата вылета" value={searchForm.date} onChangeText={(v) => patchSearch('date', v)} placeholder="YYYY-MM-DD" theme={theme} />
-                ) : (
-                  <>
-                    <Input label="Дата с" value={searchForm.rangeStart} onChangeText={(v) => patchSearch('rangeStart', v)} placeholder="YYYY-MM-DD" theme={theme} />
-                    <Input label="Дата по" value={searchForm.rangeEnd} onChangeText={(v) => patchSearch('rangeEnd', v)} placeholder="YYYY-MM-DD" theme={theme} />
-                  </>
-                )}
-                <Input label="Цена от" value={searchForm.priceFrom} onChangeText={(v) => patchSearch('priceFrom', v)} keyboardType="numeric" placeholder="0" theme={theme} />
-                <Input label="Цена до" value={searchForm.priceTo} onChangeText={(v) => patchSearch('priceTo', v)} keyboardType="numeric" placeholder="20000" theme={theme} />
-                <Input label="Код авиакомпании" value={searchForm.airlineCode} onChangeText={(v) => patchSearch('airlineCode', v.toUpperCase())} placeholder="SU" theme={theme} />
-                <Text style={[styles.label, { color: theme.muted }]}>Источник</Text>
-                <Segments
-                  value={searchForm.routeMode === 'anywhere' ? 'aviasales' : searchForm.source}
-                  onChange={(v) => patchSearch('source', v)}
-                  options={[
-                    { value: 'both', label: 'Все' },
-                    { value: 'aviasales', label: 'Aviasales' },
-                    { value: 'tutu', label: 'Tutu' },
-                    { value: 'kupibilet', label: 'Kupi' },
-                  ]}
-                  theme={theme}
-                />
-                <Btn label={loading ? 'Ищем...' : authUser ? 'Найти билеты' : 'Войдите для поиска'} onPress={runSearch} theme={theme} disabled={loading || !authUser} />
-              </View>
-            ) : null}
-
-            {activeTab === 'results' ? (
-              <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.border }]}>
-                <View style={styles.rowBetween}>
-                  <Text style={[styles.section, { color: theme.text }]}>Результаты</Text>
-                  <View style={styles.switchRow}>
-                    <Text style={[styles.switchText, { color: loading ? theme.muted : theme.text }]}>Дешевле сверху</Text>
-                    <Switch
-                      value={sortCheapFirst}
-                      onValueChange={setSortCheapFirst}
-                      disabled={loading}
-                      trackColor={{ false: theme.border, true: theme.accent }}
-                      thumbColor="#ffffff"
-                    />
-                  </View>
+            {(form.source === 'kupibilet' || form.routeMode === 'anywhere') ? (
+              <View style={[styles.hotToggleBox, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                <View style={styles.hotToggleText}>
+                  <Text style={[styles.hotToggleTitle, { color: theme.text }]}>{TEXT.search.hotTitle}</Text>
+                  <Text style={[styles.hotToggleDescription, { color: theme.muted }]}>{TEXT.search.hotDescription}</Text>
                 </View>
-                {serverTime ? <Text style={[styles.subtext, { color: theme.muted }]}>Обновлено: {formatDateTime(serverTime)}</Text> : null}
-                {loading ? (
-                  <View style={[styles.loader, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-                    <ActivityIndicator color={theme.accent} />
-                    <Text style={[styles.subtext, { color: theme.muted }]}>Собираем билеты из источников...</Text>
-                  </View>
-                ) : shownTickets.length ? (
-                  shownTickets.map((ticket) => (
-                    <TicketCard key={ticket.ticket_key} ticket={ticket} onFavorite={toggleFavorite} pendingKey={favoritePendingKey} theme={theme} />
-                  ))
-                ) : (
-                  <View style={[styles.empty, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-                    <Text style={[styles.subtext, { color: theme.muted }]}>Пока нет результатов. Запусти поиск выше.</Text>
-                  </View>
-                )}
+                <Switch
+                  value={form.kupibiletHotOffer}
+                  onValueChange={(value) =>
+                    setForm((current) => ({
+                      ...current,
+                      kupibiletHotOffer: value,
+                      source: value ? 'kupibilet' : current.routeMode === 'anywhere' ? 'aviasales' : current.source,
+                      routeMode: value ? 'anywhere' : current.routeMode,
+                      ...(value
+                        ? {
+                            date: '',
+                            rangeStart: '',
+                            rangeEnd: '',
+                            searchMode: 'single',
+                          }
+                        : null),
+                    }))
+                  }
+                  disabled={!canUseMainParser || interactionLocked}
+                />
               </View>
             ) : null}
 
-            {activeTab === 'history' ? (
-              <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.border }]}>
-                <Text style={[styles.section, { color: theme.text }]}>История поиска</Text>
-                {!authUser ? (
-                  <View style={[styles.empty, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-                    <Text style={[styles.subtext, { color: theme.muted }]}>Сначала войди в аккаунт.</Text>
-                  </View>
-                ) : null}
-                {authUser && !visibleHistory.length ? (
-                  <View style={[styles.empty, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-                    <Text style={[styles.subtext, { color: theme.muted }]}>История пока пуста.</Text>
-                  </View>
-                ) : null}
-                {authUser && visibleHistory.map((item) => (
-                  <View key={item.id} style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={styles.rowBetween}>
-                      <Text style={[styles.badge, { color: theme.accent, backgroundColor: theme.panelStrong }]}>{sourceLabel(item.source)}</Text>
-                      <Text style={[styles.meta, { color: theme.muted }]}>{item.result_count} билетов</Text>
-                    </View>
-                    <Text style={[styles.title, { color: theme.text }]}>{item.route}</Text>
-                    <Text style={[styles.meta, { color: theme.muted }]}>{item.date || 'Дата не указана'}{item.return_date ? ` - ${item.return_date}` : ''}</Text>
-                    <Text style={[styles.meta, { color: theme.muted }]}>{item.price_from ?? 0} - {item.price_to ?? '∞'} RUB</Text>
-                    <Text style={[styles.meta, { color: theme.muted }]}>{formatDateTime(item.created_at)}</Text>
-                    <View style={styles.stack10}>
-                      <Btn label="Посмотреть билеты" onPress={() => openHistory(item)} theme={theme} disabled={historyPendingId === item.id} />
-                      <Btn label="Повторить поиск" onPress={() => repeatHistory(item)} theme={theme} secondary disabled={historyPendingId === item.id} />
-                      <Btn label="Удалить" onPress={() => removeHistory(item.id)} theme={theme} secondary disabled={historyPendingId === item.id} />
-                    </View>
-                  </View>
-                ))}
-                {historyTitle ? (
-                  <View style={[styles.innerPanel, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-                    <Text style={[styles.section, { color: theme.text }]}>{historyTitle}</Text>
-                    {historyTickets.length ? historyTickets.map((ticket) => (
-                      <TicketCard key={ticket.ticket_key} ticket={ticket} onFavorite={toggleFavorite} pendingKey={favoritePendingKey} theme={theme} />
-                    )) : <Text style={[styles.subtext, { color: theme.muted }]}>В этой записи нет сохранённых билетов.</Text>}
-                  </View>
-                ) : null}
-              </View>
+            {!authUser ? <Text style={[styles.infoText, { color: theme.muted }]}>{TEXT.search.blocked}</Text> : null}
+            {hasSearchResults && !loading ? (
+              <Text style={[styles.infoText, { color: theme.muted }]}>Билеты уже загружены. Можно обновить поиск с новыми параметрами.</Text>
             ) : null}
+            <ActionButton
+              label={loading ? 'Ищем...' : TEXT.search.submit}
+              onPress={() => runSearch(form)}
+              disabled={!canSearch || interactionLocked}
+              theme={theme}
+            />
+          </View>
+        ) : null}
 
-            {activeTab === 'favorites' ? (
-              <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.border }]}>
-                <Text style={[styles.section, { color: theme.text }]}>Избранное</Text>
-                {!authUser ? (
-                  <View style={[styles.empty, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-                    <Text style={[styles.subtext, { color: theme.muted }]}>Войди в аккаунт, чтобы сохранять билеты.</Text>
-                  </View>
-                ) : favorites.length ? favorites.map((ticket) => (
-                  <TicketCard key={ticket.ticket_key} ticket={ticket} onFavorite={toggleFavorite} pendingKey={favoritePendingKey} theme={theme} />
-                )) : (
-                  <View style={[styles.empty, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-                    <Text style={[styles.subtext, { color: theme.muted }]}>Пока нет сохранённых билетов.</Text>
-                  </View>
-                )}
-              </View>
-            ) : null}
+        {tab === 'search' && results.length ? (
+          <View style={[styles.card, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+            {displayedResults.map((ticket) => (
+              <TicketCard
+                key={getTicketKey(ticket)}
+                ticket={ticket}
+                isFavorite={favoriteKeys.has(getTicketKey(ticket))}
+                canToggleFavorite={Boolean(authUser)}
+                onToggleFavorite={handleToggleFavorite}
+                loading={loading}
+                nowMs={nowTick}
+                theme={theme}
+              />
+            ))}
+          </View>
+        ) : null}
 
-            {activeTab === 'account' ? (
-              <View style={[styles.panel, { backgroundColor: theme.panel, borderColor: theme.border }]}>
-                <Text style={[styles.section, { color: theme.text }]}>Аккаунт</Text>
-                {authUser ? (
-                  <>
-                    <View style={[styles.innerPanel, { backgroundColor: theme.panelStrong, borderColor: theme.border }]}>
-                      <Text style={[styles.title, { color: theme.text }]}>{authUser.username}</Text>
-                      <Text style={[styles.subtext, { color: theme.muted }]}>Аккаунт активен.</Text>
-                    </View>
-                    <Btn label={authSubmitting ? 'Выходим...' : 'Выйти'} onPress={logout} theme={theme} secondary disabled={authSubmitting} />
-                  </>
-                ) : (
-                  <>
-                    <Segments
-                      value={authMode}
-                      onChange={setAuthMode}
-                      options={[
-                        { value: 'login', label: 'Вход' },
-                        { value: 'register', label: 'Регистрация' },
-                      ]}
+        {tab === 'results' ? (
+          <View style={[styles.card, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+            {displayedResults.length ? (
+              displayedResults.map((ticket) => (
+                <TicketCard
+                  key={getTicketKey(ticket)}
+                  ticket={ticket}
+                  isFavorite={favoriteKeys.has(getTicketKey(ticket))}
+                  canToggleFavorite={Boolean(authUser)}
+                  onToggleFavorite={handleToggleFavorite}
+                  loading={loading}
+                  nowMs={nowTick}
+                  theme={theme}
+                />
+              ))
+            ) : (
+              <Text style={[styles.infoText, { color: theme.muted }]}>{TEXT.resultsEmpty}</Text>
+            )}
+          </View>
+        ) : null}
+
+        {tab === 'favorites' ? (
+          <View style={[styles.card, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+            {displayedFavorites.length ? (
+              displayedFavorites.map((ticket) => (
+                <TicketCard
+                  key={getTicketKey(ticket)}
+                  ticket={ticket}
+                  isFavorite
+                  canToggleFavorite={Boolean(authUser)}
+                  onToggleFavorite={handleToggleFavorite}
+                  loading={loading}
+                  nowMs={nowTick}
+                  theme={theme}
+                />
+              ))
+            ) : (
+              <Text style={[styles.infoText, { color: theme.muted }]}>{TEXT.favoritesEmpty}</Text>
+            )}
+          </View>
+        ) : null}
+
+        {tab === 'history' ? (
+          <View style={[styles.card, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+            {history.length ? (
+              history.map((item) => (
+                <View key={String(item.id)} style={[styles.historyItem, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  <Text style={[styles.historyRoute, { color: theme.text }]}>{item.route}</Text>
+                  <Text style={[styles.historyMeta, { color: theme.muted }]}>{item.date || 'Дата не указана'}</Text>
+                  <Text style={[styles.historyMeta, { color: theme.muted }]}>{item.source}</Text>
+                  <Text style={[styles.historyMeta, { color: theme.muted }]}>
+                    Найдено билетов: {Number(item.result_count || 0)}
+                  </Text>
+                  <Text style={[styles.historyMeta, { color: theme.muted }]}>
+                    Запрос выполнен: {formatDateTime(item.created_at)}
+                  </Text>
+                  <View style={styles.ticketActions}>
+                    <ActionButton
+                      label={openHistoryId === item.id ? 'Свернуть билеты' : 'Посмотреть билеты'}
+                      onPress={() => handleOpenHistoryTickets(item)}
+                      variant="secondary"
+                      disabled={interactionLocked}
                       theme={theme}
                     />
-                    <Input label="Логин" value={authForm.username} onChangeText={(v) => setAuthForm((c) => ({ ...c, username: v }))} placeholder="Введите логин" theme={theme} />
-                    <Input label="Пароль" value={authForm.password} onChangeText={(v) => setAuthForm((c) => ({ ...c, password: v }))} placeholder="Введите пароль" secureTextEntry theme={theme} />
-                    <Btn label={authSubmitting ? 'Подождите...' : authMode === 'login' ? 'Войти' : 'Создать аккаунт'} onPress={submitAuth} theme={theme} disabled={authSubmitting} />
-                  </>
-                )}
-              </View>
-            ) : null}
+                    <ActionButton label={TEXT.repeatSearch} onPress={() => handleRepeatHistory(item)} disabled={interactionLocked} theme={theme} />
+                  </View>
+
+                  {openHistoryId === item.id && historyTickets.length > 0 ? (
+                    <View style={styles.historyTicketsInline}>
+                      <Text style={[styles.historyRoute, { color: theme.text }]}>Билеты запроса</Text>
+                      <Text style={[styles.historyMeta, { color: theme.muted }]}>{historyTicketsTitle}</Text>
+                      {displayedHistoryTickets.map((ticket) => (
+                        <TicketCard
+                          key={`history-${item.id}-${getTicketKey(ticket)}`}
+                          ticket={ticket}
+                          isFavorite={favoriteKeys.has(getTicketKey(ticket))}
+                          canToggleFavorite={Boolean(authUser)}
+                          onToggleFavorite={handleToggleFavorite}
+                          loading={loading}
+                          nowMs={nowTick}
+                          theme={theme}
+                        />
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ))
+            ) : (
+              <Text style={[styles.infoText, { color: theme.muted }]}>{TEXT.historyEmpty}</Text>
+            )}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        ) : null}
+
+        {tab === 'account' ? (
+          <View style={[styles.card, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+            {authUser ? (
+              <>
+                <AccountStatusBadgeThemed authenticated theme={theme} />
+                <Text style={[styles.accountText, { color: theme.text }]}>
+                  {TEXT.auth.current} {authUser.username}
+                </Text>
+                <ActionButton label={TEXT.auth.logout} onPress={handleLogout} theme={theme} />
+              </>
+            ) : (
+              <>
+                <AccountStatusBadgeThemed authenticated={false} theme={theme} />
+                <Text style={[styles.accountTitle, { color: theme.text }]}>
+                  {registerMode ? TEXT.auth.registerTitle : TEXT.auth.loginTitle}
+                </Text>
+                <TextField
+                  label={TEXT.auth.username}
+                  value={authForm.username}
+                  onChange={(value) => setAuthForm((current) => ({ ...current, username: value }))}
+                  placeholder="username"
+                  theme={theme}
+                />
+                <TextField
+                  label={TEXT.auth.password}
+                  value={authForm.password}
+                  onChange={(value) => setAuthForm((current) => ({ ...current, password: value }))}
+                  placeholder="password"
+                  theme={theme}
+                />
+                <ActionButton
+                  label={loading ? 'Подождите...' : registerMode ? TEXT.auth.submitRegister : TEXT.auth.submitLogin}
+                  onPress={handleAuthSubmit}
+                  disabled={loading || !authForm.username || !authForm.password}
+                  theme={theme}
+                />
+                <Pressable onPress={() => setRegisterMode((value) => !value)}>
+                  <Text style={[styles.switchAuthText, { color: theme.primary }]}>
+                    {registerMode ? TEXT.auth.switchLogin : TEXT.auth.switchRegister}
+                  </Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <StartupModal
+        visible={startupModalOpen}
+        city={startupCity}
+        onCityChange={setStartupCity}
+        onSkip={() => setStartupModalOpen(false)}
+        onSubmit={handleQuickSearch}
+        loading={loading}
+        theme={theme}
+      />
     </SafeAreaView>
   );
 }
 
+export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AppInner />
+    </AppErrorBoundary>
+  );
+}
+
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  scroll: { paddingBottom: 40 },
-  app: { padding: 16, gap: 16 },
-  panel: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 14 },
-  innerPanel: { borderWidth: 1, borderRadius: 18, padding: 14, gap: 12 },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  switchText: { fontSize: 13, fontWeight: '700' },
-  brand: { fontSize: 28, fontWeight: '800' },
-  section: { fontSize: 24, fontWeight: '800' },
-  title: { fontSize: 24, fontWeight: '800', lineHeight: 30 },
-  subtext: { fontSize: 14, lineHeight: 21 },
-  apiLine: { fontSize: 12, lineHeight: 18 },
-  navBtn: { minHeight: 52, borderWidth: 1, borderRadius: 18, justifyContent: 'center', paddingHorizontal: 16 },
-  navBtnText: { fontSize: 17, fontWeight: '700' },
-  accountState: { minHeight: 54, borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dot: { width: 12, height: 12, borderRadius: 999 },
-  accountStateText: { fontSize: 15, fontWeight: '700' },
-  alert: { borderWidth: 1, borderRadius: 18, padding: 14 },
-  alertText: { fontSize: 14, lineHeight: 21 },
-  loader: { borderWidth: 1, borderRadius: 18, padding: 18, alignItems: 'center', gap: 10 },
-  label: { fontSize: 13, fontWeight: '700' },
-  input: { minHeight: 50, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, fontSize: 15 },
-  segmentWrap: { borderWidth: 1, borderRadius: 18, padding: 6, gap: 6 },
-  segment: { minHeight: 42, borderWidth: 1, borderRadius: 14, justifyContent: 'center', paddingHorizontal: 12 },
-  segmentText: { fontSize: 14, fontWeight: '700' },
-  btn: { minHeight: 48, borderWidth: 1, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  btnText: { fontSize: 15, fontWeight: '800' },
-  empty: { borderWidth: 1, borderRadius: 18, padding: 16 },
-  card: { borderWidth: 1, borderRadius: 22, padding: 16, gap: 12 },
-  badge: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, fontWeight: '800' },
-  price: { fontSize: 22, fontWeight: '800' },
-  meta: { fontSize: 15, lineHeight: 22 },
-  noteBox: { borderWidth: 1, borderRadius: 16, padding: 12 },
-  noteText: { fontSize: 14, lineHeight: 21 },
-  stack8: { gap: 8 },
-  stack10: { gap: 10 },
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#dfeaf8',
+  },
+  container: {
+    flex: 1,
+  },
+  content: {
+    padding: 18,
+    paddingBottom: 48,
+    gap: 14,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#173057',
+  },
+  subtitle: {
+    color: '#6482ad',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  accountStatusBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  accountStatusBadgeOn: {
+    backgroundColor: '#ecfff3',
+    borderColor: '#92ddb0',
+  },
+  accountStatusBadgeOff: {
+    backgroundColor: '#fff0f0',
+    borderColor: '#efb1b1',
+  },
+  accountStatusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+  },
+  accountStatusDotOn: {
+    backgroundColor: '#2db35f',
+  },
+  accountStatusDotOff: {
+    backgroundColor: '#df4545',
+  },
+  accountStatusText: {
+    fontWeight: '800',
+  },
+  accountStatusTextOn: {
+    color: '#1e7f46',
+  },
+  accountStatusTextOff: {
+    color: '#b53c3c',
+  },
+  tabs: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    flex: 1,
+  },
+  topBarRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  themeToggle: {
+    minWidth: 118,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 2,
+  },
+  themeToggleLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  themeToggleValue: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  card: {
+    backgroundColor: '#f9fbff',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#bdd3f1',
+    padding: 16,
+    gap: 12,
+  },
+  fieldBlock: {
+    gap: 8,
+  },
+  fieldBlockDimmed: {
+    opacity: 0.72,
+  },
+  fieldBlockRange: {
+    flex: 1,
+    gap: 8,
+    minWidth: 220,
+  },
+  rangeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#203c67',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#bdd3f1',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#ffffff',
+    color: '#173057',
+    fontSize: 16,
+  },
+  inputDisabled: {
+    backgroundColor: '#eef4ff',
+    color: '#86a0c0',
+  },
+  button: {
+    minHeight: 50,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  buttonPrimary: {
+    backgroundColor: '#2f72d7',
+  },
+  buttonSecondary: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#bdd3f1',
+  },
+  buttonDisabled: {
+    opacity: 0.55,
+  },
+  buttonPressed: {
+    transform: [{ scale: 0.99 }],
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  buttonSecondaryText: {
+    color: '#234a81',
+  },
+  toggleChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#bdd3f1',
+    backgroundColor: '#ffffff',
+  },
+  toggleChipActive: {
+    backgroundColor: '#dcebff',
+    borderColor: '#3a7ae0',
+  },
+  toggleChipDisabled: {
+    opacity: 0.55,
+  },
+  toggleChipText: {
+    color: '#2f4e7b',
+    fontWeight: '700',
+  },
+  toggleChipTextActive: {
+    color: '#2f72d7',
+  },
+  inlineRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  errorText: {
+    color: '#b93131',
+    fontWeight: '700',
+  },
+  infoText: {
+    color: '#5f7da7',
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  hotToggleBox: {
+    borderWidth: 1,
+    borderColor: '#bdd3f1',
+    borderRadius: 20,
+    padding: 14,
+    backgroundColor: '#ffffff',
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hotToggleText: {
+    flex: 1,
+    gap: 6,
+  },
+  hotToggleTitle: {
+    color: '#173057',
+    fontWeight: '800',
+    fontSize: 15,
+  },
+  hotToggleDescription: {
+    color: '#5f7da7',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  modalOverlay: {
+    position: 'fixed',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(13, 28, 53, 0.48)',
+    zIndex: 50,
+    elevation: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 18,
+  },
+  modalCard: {
+    pointerEvents: 'auto',
+    width: '100%',
+    maxWidth: 680,
+    backgroundColor: '#f9fbff',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: '#bdd3f1',
+    padding: 20,
+    gap: 14,
+  },
+  modalBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#2f72d7',
+    color: '#ffffff',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    fontWeight: '800',
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#173057',
+  },
+  modalBody: {
+    color: '#5f7da7',
+    fontSize: 15,
+    lineHeight: 24,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'flex-end',
+  },
+  ticketCard: {
+    borderWidth: 1,
+    borderColor: '#d6e2f7',
+    borderRadius: 24,
+    padding: 16,
+    backgroundColor: '#ffffff',
+    gap: 12,
+  },
+  ticketHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  ticketSource: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#dff0ff',
+    color: '#2d5687',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    fontWeight: '800',
+  },
+  ticketPriceBlock: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  ticketOldPrice: {
+    color: '#8c9fbe',
+    textDecorationLine: 'line-through',
+    fontWeight: '700',
+  },
+  ticketPrice: {
+    color: '#173057',
+    fontWeight: '900',
+    fontSize: 18,
+  },
+  ticketRoute: {
+    color: '#173057',
+    fontSize: 18,
+    fontWeight: '900',
+    lineHeight: 28,
+  },
+  ticketSubroute: {
+    color: '#315889',
+    fontWeight: '700',
+  },
+  ticketMeta: {
+    color: '#315889',
+    fontWeight: '700',
+  },
+  hotBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#f2b79d',
+    backgroundColor: '#fff1ea',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  hotBadgeActive: {
+    backgroundColor: '#ffe9dd',
+  },
+  hotBadgeExpired: {
+    backgroundColor: '#eef4ff',
+    borderColor: '#c5d8f3',
+  },
+  hotBadgeText: {
+    color: '#e25f28',
+    fontWeight: '800',
+  },
+  hotBadgeTextActive: {
+    color: '#d45a23',
+  },
+  ticketInfo: {
+    color: '#5a769f',
+    fontSize: 15,
+  },
+  ticketNote: {
+    backgroundColor: '#edf5ff',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#c6daf6',
+    padding: 14,
+  },
+  ticketNoteText: {
+    color: '#52739f',
+    lineHeight: 24,
+  },
+  ticketActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  historyItem: {
+    borderWidth: 1,
+    borderColor: '#d6e2f7',
+    borderRadius: 18,
+    padding: 14,
+    gap: 8,
+    backgroundColor: '#ffffff',
+  },
+  historyRoute: {
+    color: '#173057',
+    fontWeight: '800',
+    fontSize: 17,
+  },
+  historyMeta: {
+    color: '#5f7da7',
+  },
+  historyTicketsInline: {
+    marginTop: 10,
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#dbe6f7',
+  },
+  accountTitle: {
+    color: '#173057',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  accountText: {
+    color: '#173057',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  switchAuthText: {
+    color: '#2f72d7',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  errorBoundary: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+    backgroundColor: '#f7fbff',
+  },
+  errorBoundaryTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#b93131',
+    marginBottom: 12,
+  },
+  errorBoundaryText: {
+    color: '#173057',
+    lineHeight: 24,
+  },
 });

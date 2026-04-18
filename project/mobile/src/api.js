@@ -13,9 +13,14 @@ async function readJson(response) {
 }
 
 export async function apiRequest(path, options = {}) {
+  const hasBody = typeof options.body !== 'undefined'
+  const baseHeaders = hasBody
+    ? { 'Content-Type': 'text/plain;charset=UTF-8' }
+    : {}
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
-      'Content-Type': 'application/json',
+      ...baseHeaders,
       ...(options.headers || {}),
     },
     credentials: 'include',
@@ -35,7 +40,16 @@ export const api = {
   login: (form) => apiRequest('/auth/login', { method: 'POST', body: JSON.stringify(form) }),
   register: (form) => apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(form) }),
   logout: () => apiRequest('/auth/logout', { method: 'POST' }),
-  search: (payload) => apiRequest('/search', { method: 'POST', body: JSON.stringify(payload) }),
+  search: (payload) => {
+    const query = new URLSearchParams();
+    Object.entries(payload || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') {
+        return;
+      }
+      query.set(key, String(value));
+    });
+    return apiRequest(`/find-tickets?${query.toString()}`, { method: 'GET' });
+  },
   favorites: () => apiRequest('/favorites', { method: 'GET' }),
   addFavorite: (ticket) => apiRequest('/favorites/add', { method: 'POST', body: JSON.stringify(ticket) }),
   removeFavorite: (ticketKey) =>

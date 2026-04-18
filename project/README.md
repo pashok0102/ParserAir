@@ -119,7 +119,7 @@ npm run dev
 
 ```powershell
 cd mobile
-$env:EXPO_PUBLIC_API_BASE_URL="http://IP_ТВОЕГО_КОМПЬЮТЕРА:8000/api"
+$env:EXPO_PUBLIC_API_BASE_URL="http://95.78.208.42:8000/api"
 npm install
 npx expo start
 ```

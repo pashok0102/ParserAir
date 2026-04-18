@@ -11,7 +11,7 @@ import requests
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from dotenv import load_dotenv
 
 from app.config import load_settings
@@ -65,6 +65,22 @@ def parse_optional_str(value) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def parse_boolish(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (None, '', 0, '0'):
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+    return bool(value)
+
+
+def parse_search_payload(request):
+    if request.method == 'GET':
+        return {key: value for key, value in request.GET.items()}
+    return parse_json_body(request)
 
 
 def date_range(start: date, end: date):
@@ -1026,9 +1042,9 @@ def favorites_remove(request):
 
 
 @csrf_exempt
-@require_POST
+@require_http_methods(["GET", "POST"])
 def search(request):
-    payload = parse_json_body(request)
+    payload = parse_search_payload(request)
     if payload is None:
         return JsonResponse({'error': 'Некорректный JSON'}, status=400)
 
@@ -1036,9 +1052,9 @@ def search(request):
     if not route:
         return JsonResponse({'error': 'Маршрут обязателен'}, status=400)
 
-    anywhere = bool(payload.get('anywhere'))
-    kupibilet_hot_offer = bool(payload.get('kupibilet_hot_offer'))
-    deep_scan = bool(payload.get('deep_scan', True))
+    anywhere = parse_boolish(payload.get('anywhere'))
+    kupibilet_hot_offer = parse_boolish(payload.get('kupibilet_hot_offer'))
+    deep_scan = parse_boolish(payload.get('deep_scan', True))
 
     source = str(payload.get('source', 'both')).strip().lower() or 'both'
     if source not in {'aviasales', 'tutu', 'kupibilet', 'both'}:
