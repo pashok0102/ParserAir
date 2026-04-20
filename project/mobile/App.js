@@ -127,7 +127,81 @@ const CITY_TO_IATA = {
   novosibirsk: 'OVB',
   краснодар: 'KRR',
   krasnodar: 'KRR',
+  минск: 'MSQ',
+  minsk: 'MSQ',
+  гомель: 'GME',
+  gomel: 'GME',
+  брест: 'BQT',
+  brest: 'BQT',
+  гродно: 'GNA',
+  grodno: 'GNA',
+  витебск: 'VTB',
+  vitebsk: 'VTB',
+  стамбул: 'IST',
+  istanbul: 'IST',
+  анталья: 'AYT',
+  antalya: 'AYT',
+  дубай: 'DXB',
+  dubai: 'DXB',
+  тбилиси: 'TBS',
+  tbilisi: 'TBS',
+  ереван: 'EVN',
+  yerevan: 'EVN',
+  баку: 'GYD',
+  baku: 'GYD',
+  алматы: 'ALA',
+  almaty: 'ALA',
+  астана: 'NQZ',
+  astana: 'NQZ',
+  ташкент: 'TAS',
+  tashkent: 'TAS',
+  бишкек: 'FRU',
+  bishkek: 'FRU',
 };
+
+const CITY_OPTIONS = [
+  { name: 'Москва', iata: 'MOW', aliases: ['москва', 'moscow', 'мск', 'mow'] },
+  { name: 'Санкт-Петербург', iata: 'LED', aliases: ['санкт петербург', 'санкт-петербург', 'saint petersburg', 'st petersburg', 'petersburg', 'спб', 'led'] },
+  { name: 'Сочи', iata: 'AER', aliases: ['сочи', 'sochi', 'aer'] },
+  { name: 'Оренбург', iata: 'REN', aliases: ['оренбург', 'orenburg', 'ren'] },
+  { name: 'Орел', iata: 'OEL', aliases: ['орел', 'орёл', 'orel', 'oryol', 'oel'] },
+  { name: 'Уфа', iata: 'UFA', aliases: ['уфа', 'ufa'] },
+  { name: 'Казань', iata: 'KZN', aliases: ['казань', 'kazan', 'kzn'] },
+  { name: 'Самара', iata: 'KUF', aliases: ['самара', 'samara', 'kuf'] },
+  { name: 'Екатеринбург', iata: 'SVX', aliases: ['екатеринбург', 'yekaterinburg', 'ekaterinburg', 'svx'] },
+  { name: 'Новосибирск', iata: 'OVB', aliases: ['новосибирск', 'novosibirsk', 'ovb'] },
+  { name: 'Краснодар', iata: 'KRR', aliases: ['краснодар', 'krasnodar', 'krr'] },
+  { name: 'Минск', iata: 'MSQ', aliases: ['минск', 'minsk', 'msq'] },
+  { name: 'Гомель', iata: 'GME', aliases: ['гомель', 'gomel', 'gme'] },
+  { name: 'Брест', iata: 'BQT', aliases: ['брест', 'brest', 'bqt'] },
+  { name: 'Гродно', iata: 'GNA', aliases: ['гродно', 'grodno', 'gna'] },
+  { name: 'Витебск', iata: 'VTB', aliases: ['витебск', 'vitebsk', 'vtb'] },
+  { name: 'Стамбул', iata: 'IST', aliases: ['стамбул', 'istanbul', 'ist'] },
+  { name: 'Анталья', iata: 'AYT', aliases: ['анталья', 'antalya', 'ayt'] },
+  { name: 'Дубай', iata: 'DXB', aliases: ['дубай', 'dubai', 'dxb'] },
+  { name: 'Тбилиси', iata: 'TBS', aliases: ['тбилиси', 'tbilisi', 'tbs'] },
+  { name: 'Ереван', iata: 'EVN', aliases: ['ереван', 'yerevan', 'evn'] },
+  { name: 'Баку', iata: 'GYD', aliases: ['баку', 'baku', 'gyd'] },
+  { name: 'Алматы', iata: 'ALA', aliases: ['алматы', 'almaty', 'alma ata', 'ala'] },
+  { name: 'Астана', iata: 'NQZ', aliases: ['астана', 'astana', 'nur sultan', 'nqz'] },
+  { name: 'Ташкент', iata: 'TAS', aliases: ['ташкент', 'tashkent', 'tas'] },
+  { name: 'Бишкек', iata: 'FRU', aliases: ['бишкек', 'bishkek', 'fru'] },
+  { name: 'Душанбе', iata: 'DYU', aliases: ['душанбе', 'dushanbe', 'dyu'] },
+  { name: 'Тель-Авив', iata: 'TLV', aliases: ['тель авив', 'тель-авив', 'tel aviv', 'tlv'] },
+  { name: 'Каир', iata: 'CAI', aliases: ['каир', 'cairo', 'cai'] },
+  { name: 'Белград', iata: 'BEG', aliases: ['белград', 'belgrade', 'beg'] },
+  { name: 'Будапешт', iata: 'BUD', aliases: ['будапешт', 'budapest', 'bud'] },
+  { name: 'Нижневартовск', iata: 'NJC', aliases: ['нижневартовск', 'nizhnevartovsk', 'njc'] },
+  { name: 'Мурманск', iata: 'MMK', aliases: ['мурманск', 'murmansk', 'mmk'] },
+  { name: 'Магадан', iata: 'GDX', aliases: ['магадан', 'magadan', 'gdx'] },
+  { name: 'Хабаровск', iata: 'KHV', aliases: ['хабаровск', 'khabarovsk', 'khv'] },
+  { name: 'Владивосток', iata: 'VVO', aliases: ['владивосток', 'vladivostok', 'vvo'] },
+  { name: 'Новокузнецк', iata: 'NOZ', aliases: ['новокузнецк', 'novokuznetsk', 'noz'] },
+  { name: 'Красноярск', iata: 'KJA', aliases: ['красноярск', 'krasnoyarsk', 'kja'] },
+  { name: 'Иркутск', iata: 'IKT', aliases: ['иркутск', 'irkutsk', 'ikt'] },
+  { name: 'Пермь', iata: 'PEE', aliases: ['пермь', 'perm', 'pee'] },
+  { name: 'Калининград', iata: 'KGD', aliases: ['калининград', 'kaliningrad', 'kgd'] },
+];
 
 function normalizeLocationKey(value) {
   return String(value || '')
@@ -139,11 +213,45 @@ function normalizeLocationKey(value) {
     .replace(/\s+/g, ' ');
 }
 
+function normalizeCitySearchKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[.,]/g, ' ')
+    .replace(/[-–—]/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function getCitySuggestions(value, limit = 6) {
+  const query = normalizeCitySearchKey(value);
+  if (query.length < 2) {
+    return [];
+  }
+  return CITY_OPTIONS
+    .filter((city) => {
+      const nameKey = normalizeCitySearchKey(city.name);
+      return (
+        nameKey.startsWith(query) ||
+        city.iata.toLowerCase().startsWith(query) ||
+        city.aliases.some((alias) => normalizeCitySearchKey(alias).startsWith(query))
+      );
+    })
+    .slice(0, limit);
+}
+
 function normalizeLocation(value) {
   const cleaned = String(value || '').trim();
   const upper = cleaned.toUpperCase();
   if (/^[A-Z]{3}$/.test(upper)) {
     return upper;
+  }
+  const city = CITY_OPTIONS.find((option) => {
+    const key = normalizeCitySearchKey(cleaned);
+    return normalizeCitySearchKey(option.name) === key || option.aliases.some((alias) => normalizeCitySearchKey(alias) === key);
+  });
+  if (city) {
+    return city.iata;
   }
   return CITY_TO_IATA[normalizeLocationKey(cleaned)] || cleaned;
 }
@@ -342,7 +450,18 @@ function SectionLabel({ children, theme = fallbackTheme }) {
   return <Text style={[styles.sectionLabel, { color: theme.text }]}>{children}</Text>;
 }
 
-function TextField({ label, value, onChange, placeholder, disabled, dimmed = false, theme = fallbackTheme }) {
+function TextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  dimmed = false,
+  theme = fallbackTheme,
+  suggestions = false,
+}) {
+  const citySuggestions = suggestions && !disabled ? getCitySuggestions(value) : [];
+
   return (
     <View style={[styles.fieldBlock, dimmed && styles.fieldBlockDimmed]}>
       <SectionLabel theme={theme}>{label}</SectionLabel>
@@ -362,6 +481,23 @@ function TextField({ label, value, onChange, placeholder, disabled, dimmed = fal
           disabled && styles.inputDisabled,
         ]}
       />
+      {citySuggestions.length ? (
+        <View style={[styles.citySuggestions, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          {citySuggestions.map((city) => (
+            <Pressable
+              key={city.iata}
+              onPress={() => onChange(city.name)}
+              style={({ pressed }) => [
+                styles.citySuggestionItem,
+                pressed && styles.citySuggestionItemPressed,
+              ]}
+            >
+              <Text style={[styles.citySuggestionName, { color: theme.text }]}>{city.name}</Text>
+              <Text style={[styles.citySuggestionMeta, { color: theme.muted }]}>{city.iata}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -473,6 +609,7 @@ function StartupModal({ visible, city, onCityChange, onSkip, onSubmit, loading, 
           placeholder={TEXT.popup.cityPlaceholder}
           disabled={loading}
           theme={theme}
+          suggestions
         />
         <View style={styles.modalActions}>
           <ActionButton label={TEXT.popup.skip} onPress={onSkip} variant="secondary" disabled={loading} theme={theme} />
@@ -788,9 +925,11 @@ function AppInner() {
             setResults((current) => mergeUniqueTickets(current, deepTickets));
           } catch {
             setResults((current) => {
-              if (!current.length) {
-                setError('Не удалось догрузить горячие билеты Kupibilet. Попробуйте ещё раз.');
-              }
+              setError(
+                current.length
+                  ? 'Первые билеты показаны, но полная догрузка Kupibilet не завершилась. Попробуйте обновить поиск.'
+                  : 'Не удалось догрузить горячие билеты Kupibilet. Попробуйте ещё раз.'
+              );
               return current;
             });
           }
@@ -966,6 +1105,7 @@ function AppInner() {
               placeholder={TEXT.search.fromPlaceholder}
               disabled={!canUseMainParser || interactionLocked}
               theme={theme}
+              suggestions
             />
 
             <TextField
@@ -976,6 +1116,7 @@ function AppInner() {
               disabled={!canUseMainParser || interactionLocked || form.routeMode === 'anywhere' || form.kupibiletHotOffer}
               dimmed={form.routeMode === 'anywhere'}
               theme={theme}
+              suggestions
             />
 
             <SectionLabel theme={theme}>{TEXT.search.routeTitle}</SectionLabel>
@@ -1426,6 +1567,32 @@ const styles = StyleSheet.create({
   inputDisabled: {
     backgroundColor: '#eef4ff',
     color: '#86a0c0',
+  },
+  citySuggestions: {
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  citySuggestionItem: {
+    minHeight: 46,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  citySuggestionItemPressed: {
+    opacity: 0.72,
+  },
+  citySuggestionName: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  citySuggestionMeta: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.8,
   },
   button: {
     minHeight: 50,

@@ -41,14 +41,7 @@ export const api = {
   register: (form) => apiRequest('/auth/register', { method: 'POST', body: JSON.stringify(form) }),
   logout: () => apiRequest('/auth/logout', { method: 'POST' }),
   search: (payload) => {
-    const query = new URLSearchParams();
-    Object.entries(payload || {}).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '') {
-        return;
-      }
-      query.set(key, String(value));
-    });
-    return apiRequest(`/find-tickets?${query.toString()}`, { method: 'GET' });
+    return apiRequest('/find-tickets', { method: 'POST', body: JSON.stringify(payload || {}) });
   },
   favorites: () => apiRequest('/favorites', { method: 'GET' }),
   addFavorite: (ticket) => apiRequest('/favorites/add', { method: 'POST', body: JSON.stringify(ticket) }),
